@@ -1,5 +1,19 @@
 # SallyTraduction 1.1 : traduction technique locale FR ↔ EN
 
+## ⬇️ Téléchargements (version 1.1.0)
+
+| | Lien de téléchargement direct | Taille |
+|---|---|---|
+| 💼 **Exécutable portable** (sans installation, sans droits administrateur) | **[SallyTraduction-Portable-1.1.0.exe](https://github.com/salistar/SallyTraduction/releases/download/v1.1.0/SallyTraduction-Portable-1.1.0.exe)** | **730 Mo** |
+| 🧩 **Installateur Windows** (raccourcis, menu Démarrer, clic droit) | **[SallyTraduction-Setup-1.1.0.exe](https://github.com/salistar/SallyTraduction/releases/download/v1.1.0/SallyTraduction-Setup-1.1.0.exe)** | **693 Mo** |
+
+**Exécutable portable :** `https://github.com/salistar/SallyTraduction/releases/download/v1.1.0/SallyTraduction-Portable-1.1.0.exe`
+
+**Installateur :** `https://github.com/salistar/SallyTraduction/releases/download/v1.1.0/SallyTraduction-Setup-1.1.0.exe`
+
+> **Fonctionne sans internet et sans Ollama** : téléchargez le fichier une fois, puis copiez-le (clé USB) sur l'ordinateur hors ligne. Tous les modèles sont inclus.
+> Dépôt privé : les liens demandent d'être connecté à GitHub avec un compte qui a accès au dépôt.
+
 Application Windows qui traduit des documents **PDF et Word (.docx)** entre l'anglais et le français, **100 % hors ligne**. Le fichier produit garde le même format et la même mise en page, et un rapport de contrôle qualité l'accompagne. Un écran de **vérification manuelle** donne pour chaque phrase douteuse sa **page, sa ligne et la position du mot**.
 
 📖 **Mode d'emploi détaillé : [GUIDE_UTILISATION.md](GUIDE_UTILISATION.md)**
