@@ -6,7 +6,7 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()
     if "--cli" in sys.argv:
         from sally_traduction.__main__ import cli
-        cli(sys.argv[1:])
+        sys.exit(cli(sys.argv[1:]))
     else:
         from sally_traduction.app import main
         main()

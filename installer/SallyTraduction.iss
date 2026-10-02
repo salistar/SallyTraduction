@@ -1,6 +1,6 @@
 ﻿; Installateur SallyTraduction (Inno Setup 6)
 #define AppName "SallyTraduction"
-#define AppVersion "1.1.0"
+#define AppVersion "1.1.1"
 #define AppPublisher "SALISTAR"
 #define AppExe "SallyTraduction.exe"
 #define Root ".."

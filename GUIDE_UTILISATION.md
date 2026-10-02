@@ -8,8 +8,8 @@ SallyTraduction traduit vos documents **PDF et Word (.docx)** de l'anglais vers 
 
 | Version | Fichier | Quand l'utiliser |
 |---|---|---|
-| **Portable** | `SallyTraduction.exe` (≈ 730 Mo) | Pas de droits administrateur, PC professionnel, clé USB, aucune installation souhaitée |
-| **Installateur** | `SallyTraduction-Setup-1.1.0.exe` (≈ 690 Mo) | PC personnel : raccourcis, menu Démarrer, clic droit « Traduire avec SallyTraduction » |
+| **Portable** | `SallyTraduction-Portable.exe` (≈ 730 Mo) | Pas de droits administrateur, PC professionnel, clé USB, aucune installation souhaitée |
+| **Installateur** | `SallyTraduction-Setup.exe` (≈ 690 Mo) | PC personnel : raccourcis, menu Démarrer, clic droit « Traduire avec SallyTraduction » |
 
 Les deux se téléchargent dans la page **Releases** du dépôt GitHub. Configuration requise : Windows 10 ou 11 en 64 bits, 8 Go de RAM au minimum (16 Go conseillés), 2 Go d'espace libre et un processeur avec AVX2 (tous les PC depuis 2015 environ).
 
@@ -26,7 +26,7 @@ Les deux se téléchargent dans la page **Releases** du dépôt GitHub. Configur
 > Si Windows affiche « Windows a protégé votre ordinateur » (SmartScreen), cliquez sur **Informations complémentaires** puis **Exécuter quand même**. Ce message apparaît pour tout programme sans signature numérique. Si votre entreprise bloque les programmes non approuvés (AppLocker), seul votre service informatique peut autoriser l'application.
 
 ### Version installée
-Lancez `SallyTraduction-Setup-1.1.0.exe`, suivez l'assistant (aucun droit administrateur requis par défaut), puis ouvrez **SallyTraduction** depuis le menu Démarrer ou le Bureau.
+Lancez `SallyTraduction-Setup.exe`, suivez l'assistant (aucun droit administrateur requis par défaut), puis ouvrez **SallyTraduction** depuis le menu Démarrer ou le Bureau.
 Avec l'option « clic droit » cochée, il suffit de faire un clic droit sur un PDF ou un Word puis **Traduire avec SallyTraduction**.
 
 ---
@@ -115,9 +115,16 @@ pod = pod                    (garder le terme tel quel)
 
 ## 7. Ligne de commande (automatisation)
 
+La façon la plus simple est le script **`SallyTraduction.ps1`** : il ne demande ni installation ni droits administrateur, et affiche la progression dans PowerShell.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\SallyTraduction.ps1 -Fichier "C:\docs\manuel.pdf"
+powershell -ExecutionPolicy Bypass -File .\SallyTraduction.ps1 -Fichier "C:\docs\a_traduire" -Sens en-fr -Rapide
 ```
-SallyTraduction.exe --cli "C:\docs\manuel.pdf" --dir auto --out "C:\docs\traductions"
-SallyTraduction.exe --cli "C:\docs\guide.docx" --dir en-fr --fast
+Toutes les options et le cas sans internet (clé USB) sont décrits dans le [README](README.md#️-utiliser-lapplication-uniquement-avec-powershell-sans-installation-sans-droits-administrateur).
+
+Appel direct de l'exécutable (plusieurs fichiers possibles) :
+```
+Start-Process .\SallyTraduction-Portable.exe -ArgumentList '--cli "C:\docs\manuel.pdf" "C:\docs\guide.docx" --dir auto --out "C:\docs\traductions"' -Wait
 ```
 `--dir auto|en-fr|fr-en` choisit le sens, `--out` le dossier de sortie, et `--fast` désactive le deuxième avis.
 

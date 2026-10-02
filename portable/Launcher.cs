@@ -17,12 +17,12 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyCompany("SALISTAR")]
 [assembly: System.Reflection.AssemblyProduct("SallyTraduction")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (c) 2026 SALISTAR")]
-[assembly: System.Reflection.AssemblyVersion("1.1.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.1.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.1.1.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.1.1.0")]
 
 static class Program
 {
-    const string Version = "1.1.0";
+    const string Version = "1.1.1";
     const string Magic = "SALLYPK1";
 
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -53,6 +53,7 @@ static class Program
         bool ready = File.Exists(exe) && File.Exists(marker) && File.ReadAllText(marker) == stamp;
         if (!ready)
         {
+            try { Directory.CreateDirectory(Path.GetDirectoryName(root)); } catch { }
             Application.EnableVisualStyles();
             var form = new SplashForm();
             Exception error = null;
@@ -71,9 +72,20 @@ static class Program
                 return 2;
             }
         }
+        // --prepare <fichier> : décompresse seulement et écrit le dossier de l'application (utilisé par SallyTraduction.ps1)
+        if (args.Length >= 1 && args[0] == "--prepare")
+        {
+            if (args.Length >= 2) File.WriteAllText(args[1], root, new UTF8Encoding(false));
+            return 0;
+        }
         var sb = new StringBuilder();
         foreach (var a in args) sb.Append(" \"").Append(a.Replace("\"", "\\\"")).Append('"');
-        Process.Start(new ProcessStartInfo(exe, sb.ToString()) { UseShellExecute = false, WorkingDirectory = root });
+        var p = Process.Start(new ProcessStartInfo(exe, sb.ToString()) { UseShellExecute = false, WorkingDirectory = root });
+        if (Array.IndexOf(args, "--cli") >= 0)
+        {
+            p.WaitForExit();                 // ligne de commande : on attend et on renvoie le code de sortie
+            return p.ExitCode;
+        }
         return 0;
     }
 

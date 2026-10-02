@@ -19,3 +19,7 @@ portable/stub.exe
 # Sorties de test
 tests/out*/
 tests/*.png
+
+# Exécutable portable téléchargé à côté du script
+scripts/*.exe
+scripts/*.part

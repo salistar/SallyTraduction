@@ -19,12 +19,17 @@ def ct2(model, out, extra):
     if (M / out / "model.bin").exists():
         print("déjà présent :", out)
         return
-    subprocess.check_call([sys.executable, "-m", "ctranslate2.converters.transformers", "--model", model,
-                           "--output_dir", str(M / out), "--quantization", "int8", "--force", "--copy_files", *extra])
+    print("conversion :", model, "->", out, flush=True)
+    from ctranslate2.converters import TransformersConverter
+    TransformersConverter(model, copy_files=extra, low_cpu_mem_usage=True).convert(
+        str(M / out), quantization="int8", force=True)
 
 
 def main():
-    M.mkdir(exist_ok=True)
+    global M
+    if "--dest" in sys.argv:                      # dossier de destination (défaut : models/ du dépôt)
+        M = Path(sys.argv[sys.argv.index("--dest") + 1]).resolve()
+    M.mkdir(parents=True, exist_ok=True)
     ct2("Helsinki-NLP/opus-mt-en-fr", "opus-mt-en-fr-ct2", ["source.spm", "target.spm"])
     ct2("Helsinki-NLP/opus-mt-fr-en", "opus-mt-fr-en-ct2", ["source.spm", "target.spm"])
     ct2("facebook/m2m100_418M", "m2m100_418m-ct2", ["sentencepiece.bpe.model"])
