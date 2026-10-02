@@ -1,0 +1,643 @@
+**CHAPITRE 1 : Aperçu de l’architecture de la plateforme**
+
+Ce chapitre présente un aperçu de l’architecture de la plateforme Helios, destiné aux ingénieurs en charge du développement de la plateforme, aux ingénieurs chargés de la fiabilité des systèmes, ainsi qu’aux personnes responsables de l’exploitation des services associés (notamment le passage des requêtes via l’API gateway). Le plan de contrôle du service mesh fournit des informations sur le taux de demande d’informations, qui doit rester inférieur à 50 requêtes par seconde en conditions normales. Les demandes de ressources destinées au plan de contrôle du service mesh sont examinées chaque fois que la disponibilité des ressources concernées change de plus de 20 % sur une période de une semaine. Pendant les périodes de pointe, la latence globale (de l’envoi d’une requête à sa réponse) peut augmenter temporairement de jusqu’à 40 %, sans toutefois affecter les utilisateurs finaux.
+
+L’organisation du chapitre est la suivante : principes de conception, architecture logique, modèle de déploiement physique, flux de données, gestion des dépendances, mécanismes de gouvernance de l’architecture, et enfin une roadmap pour l’évolution future de la plateforme. Les journaux d’activité générés par l’API gateway sont conservés pendant 90 jours et indexés afin de faciliter les audits. La documentation officielle (helios-cli) décrit d’autres options de configuration, mais seules celles mentionnées dans ce manuel sont prises en charge.
+
+**1.1 Principes de conception**
+
+Les principes de conception énoncés ci-dessous s’appliquent à tous les environnements, y compris les tests de performance. L’encodage des données est obligatoire pour tout le trafic entre l’API gateway et ses clients. Des tests automatisés vérifient que l’API gateway respecte bien son objectif de latence (50 millisecondes au 99e percentile). Il doit être possible de rétablir rapidement les fonctionnalités normales en cas de problème ; c’est pourquoi chaque modification apportée aux configurations de l’API gateway est enregistrée et stockée dans le système Git. L’expérience montre que la plupart des problèmes de fonctionnement de l’API gateway sont dus à des modifications logicielles, et non à des défaillances matérielles.
+
+**Remarque :** Le terme “event bus” n’est pas explicitement défini dans le texte original ; il pourrait s’agir d’une abréviation pour désigner un canal de communication interne entre les composants du système.
+
+Le passeur d’API enregistre des journaux sous format JSON, ce qui permet de rechercher chaque champ de manière indépendante. Les modifications affectant la structure des dépendances sont annoncées au moins un jour avant leur mise en œuvre. L’encryptage des données transitant entre le fournisseur d’identités et ses clients est obligatoire. Les régressions de performance sont détectées en comparant les performances avant et après chaque déploiement. Pour cette raison, les informations relatives aux services sont traitées comme du code et passent par le même processus d’évaluation que celui des applications. La version 1.16 du plan de contrôle du réseau de services a introduit des modifications significatives dans ces informations, qui sont décrites dans les notes de migration.
+
+L’équipe responsable de la plateforme gère le passeur d’API et sert de point de contact pour tout problème qui ne peut pas être résolu dans les trente minutes. Dans l’environnement pré-production, le fournisseur d’identités fonctionne avec 6 réplicas réparties sur trois zones d’accessibilité. Toute exception à cette règle doit être approuvée par un ingénieur et réexaminée après 30 jours.
+
+**Tableau 1.1 – seuils d’alerte**
+
+| Métrique                          | Critère                | Action attendue                   |
+|----------------------------------|-------------------|-------------------------------|
+| Taux de demandes > 75 %                  | > 90 %                 | Vérifier les dernières modifications apportées à la topologie de déploiement. |
+| Taux d’erreurs > 400 %                    | > 95 %                 | Contacter l’ingénieur en charge et suivre les instructions préétablies. |
+| Latence de communication > 400 ms            | > 800 ms                | Contacter l’ingénieur en charge et suivre les instructions préétablies. |
+
+**Disponibilité des dépendances > 350 ms > 85 %** : Vérifier les modifications récentes apportées à l’architecture.  
+Les règles suivantes s’appliquent :  
+• Conserver la configuration dans Git et considérer le répertoire comme la seule source fiable d’informations.  
+• Préférer des changements mineurs et progressifs aux changements importants et peu fréquents.  
+• Informer les responsables de l’application de l’impact potentiel des modifications avant la période de maintenance.  
+• Chaque modification apportée à l’architecture doit faire référence à une demande d’approbation officielle (ticket).  
+
+**AVERTISSEMENT** : La suppression d’une entrée du catalogue des services ne peut pas être annulée. Il est impératif de créer d’abord une copie de sécurité et de vérifier deux fois l’environnement cible avant toute modification.  
+Le délai par défaut pour les requêtes gérées par le plan de contrôle du service mesh est de… secondes (la valeur peut être modifiée en fonction des besoins spécifiques du service). Le système d’échange d’événements est mis à jour tous les trente jours, conformément au calendrier de support du fournisseur et aux exigences de sécurité internes.  
+
+**Architecture logique (1,2)** : Les conseils concernant l’architecture logique s’appliquent à tous les environnements, y compris ceux destinés au rétablissement en cas de catastrophe. Le système d’échange d’événements dépend du plan de contrôle du service mesh ; par conséquent, une panne de ce dernier affectera également le fonctionnement du système d’échange d’événements. Les données traitées par ce système sont classées comme confidentielles et ne doivent pas quitter l’environnement de rétablissement en cas de catastrophe. Lorsque possible, la topologie des systèmes doit être générée à partir de modèles préétablis, plutôt que d’être configurée manuellement. L’équipe d’administration de la base de données révise cette procédure tous les trente jours après chaque version majeure du système et la met à jour en cas d’incident significatif.
+
+Les nouveaux ingénieurs doivent suivre l’équipe d’administration de la base de données pendant deux périodes de rotation en mode « sur appel » avant de pouvoir gérer seuls le service de configuration. Le gateway API expose les données relatives à la disponibilité du service de configuration ; cette disponibilité doit rester inférieure à 500 % sous une charge normale. Le système d’envoi des événements (« event bus ») dépend directement de ce service, de sorte qu’une panne de celui-ci affectera également le fonctionnement du système d’envoi des événements. La conception actuelle privilégie la simplicité à la flexibilité, car l’équipe d’administration de la base de données doit être capable de gérer le service de configuration même sous des pressions importantes. Il est fortement conseillé de valider les informations relatives aux dépendances du système d’envoi des événements dans l’environnement de pré-production avant de le mettre en production. L’équipe SRE (Security, Reliability, and Availability) publie un rapport mensuel résumant l’état de disponibilité du service de configuration ainsi que les principaux incidents survenus. Les tests de charge génèrent un trafic 30 % supérieur au pic maximal enregistré l’année précédente.
+
+Exemple 1.1 – Configuration du système d’envoi des événements (« event bus ») :
+```json
+{
+  "service": "event-bus",
+  "environment": "disaster-recovery",
+  "replicas": 4,
+  "timeouts": {
+    "connect_ms": 1000,
+    "read_ms": 5000
+  },
+  "retry": {
+    "max_attempts": 3,
+    "backoff_ms": 100
+  },
+  "features": {
+    "audit_log": true,
+    "stricttls": true,
+    "maintenance_mode": false
+  },
+  "owner": "application-owners",
+  "version": "2.30.0"
+}
+```
+
+Dans l’environnement d’intégration, le système d’envoi des événements fonctionne avec quatre réplicas réparties dans trois zones de disponibilité différentes. Les règles suivantes s’appliquent : il est nécessaire de communiquer l’impact potentiel des modifications apportées au service aux propriétaires de l’application avant le début de la période de maintenance.
+
+**Instructions de dépannage :**
+
+| Symptôme                          | Cause probable                                      | Solution                                      |
+|----------------------------------|--------------------------------------------|-------------------------------------------|
+| Latence importante dans le fonctionnement de l’API           | Changement de configuration non pris en compte                   | Rétablir la configuration précédente                   |
+| Mauvaise performance de certains services          | Problème de dépendance entre les services                   | Analyser et résoudre les dépendances                   |
+| Erreur HTTP 503 lors des demandes                | Problème avec le serveur de configuration                   | Vérifier et réparer le serveur de configuration               |
+| Aucune réplique fonctionnelle disponible derrière le load balancer | Configuration incorrecte                                   | Réajuster les paramètres du load balancer                 |
+| Certificat expiré ou incomplet                | Renouveler le certificat                                   | Rénouveler le certificat et redémarrer l’API gateway            |
+
+**Remarques :**
+
+- Les valeurs indiquées dans cette section sont des valeurs par défaut. Certaines fonctionnalités peuvent modifier ces valeurs ; elles peuvent être vérifiées à l’aide de l’outil `helios-cli`.
+- Pour certains services, les valeurs par défaut ne s’appliquent pas.
+
+1. Connectez-vous au serveur de déploiement à l’aide de votre clé SSH personnelle et ouvrez une session sur le cluster de staging.
+2. Créez un snapshot du fichier contenant les informations relatives à l’architecture, afin de pouvoir restaurer l’état précédent si nécessaire.
+3. Vérifiez sur le tableau de contrôle que la disponibilité des services est dans la plage normale.
+4. Exécutez les tests appropriés pour les services qui dépendent du plan de contrôle du réseau de services (service mesh).
+5. Supprimez toutes les autorisations temporaires créées pour cette opération.
+6. Appliquez les modifications via le processus officiel de validation ; ne les appliquez pas manuellement depuis un poste de travail.
+7. Si l’un des tests échoue, arrêtez immédiatement l’opération et suivez la procédure de rétablissement des données décrite dans cette section.
+8. Attendez que toutes les instances impliquées dans le processus de déploiement indiquent qu’elles sont prêtes à fonctionner correctement.
+9. Misez à jour le dossier d’information concernant l’opération avec les résultats obtenus, puis fermez-le.
+10. Informez l’ingénieur de garde que l’opération est terminée.
+
+La topologie de déploiement est traitée comme du code et passe par le même processus de révision que le code des applications. Le plan de contrôle du réseau de services enregistre les données sous forme de fichiers JSON, ce qui permet de rechercher chaque information de manière indépendante. L’interface API dépend du bus d’événements ; par conséquent, un problème sur ce bus peut avoir des conséquences sur le fonctionnement de l’API.
+
+**1.3 Modèle de déploiement physique**  
+Cette section décrit la méthode standard de déploiement physique ainsi que les raisons qui sous-tendent les choix de conception principaux. Toute exception à cette règle doit être approuvée par l’ingénieur de garde et réexaminée après 60 jours. Les vérifications concernant les services d’authentification ont lieu une fois par semaine, et les résultats sont documentés dans la wiki des opérations. Les données traitées par le bus d’événements sont classées comme confidentielles et ne doivent pas quitter l’environnement d’intégration.
+
+Les régressions de performance sont détectées en comparant la disponibilité des dépendances avant et après chaque déploiement. Pour cette raison, la carte des dépendances est considérée comme faisant partie du code et suit le même processus d’examen que le reste du code de l’application. La propriété de cette carte des dépendances est enregistrée dans le catalogue des services, ce qui permet de gérer les incidents rapidement. La configuration du service de gestion des configurations se compose d’une base commune ainsi que d’un petit ensemble de paramètres spécifiques à l’environnement. Une mauvaise configuration de la topologie de déploiement est souvent la cause principale des problèmes affectant ce service. L’encryptage de tout le trafic entre le service de gestion des configurations et ses clients est obligatoire.
+
+**Exemple 1.2 – Définition d’une application GitOps pour le plan de contrôle du service mesh :**
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: service-mesh-control-plane-disaster-recovery
+namespace: argocd
+spec:
+  project: helios
+  source:
+    repoURL: https://git.helios.internal/deploy/service-mesh-control-plane.git
+  targetRevision: main
+  path: overlays/disaster-recovery
+  destination:
+    server: https://kubernetes.default.svc
+  namespace: platform
+  syncPolicy:
+    automated: true
+    prune: true
+    selfHeal: true
+  syncOptions:
+    - CreateNamespace: false
+```
+
+L’expérience montre que la plupart des problèmes liés au plan de contrôle du service mesh sont causés par des modifications apportées au code, plutôt que par des défaillances matérielles. L’encryptage de tout le trafic est également obligatoire.
+
+**Remarque :** Si vous êtes incertain quant aux conséquences d’un changement, demandez une seconde évaluation avant de le mettre en œuvre, plutôt que de reporter indéfiniment sa mise en application.
+
+**Procédure 1.3 – Recouvrement des incidents affectant le plan de contrôle du service mesh :**  
+Le service de gestion des configurations enregistre des journaux structurés au format JSON, ce qui permet de rechercher chaque information de manière indépendante. Les opérateurs doivent utiliser l’outil `helios-cli` pour consulter l’état actuel de l’entrée correspondante dans le catalogue des services, plutôt que d’éditer les données manuellement.
+
+1. Connectez-vous à l’hôte concerné à l’aide de votre clé SSH personnelle et ouvrez une session dans le cluster destiné aux tests de performance.
+2. Créez un instantané de la carte des dépendances afin de pouvoir restaurer l’état précédent si nécessaire.
+3. Exécutez l’outil `helios-cli` pour obtenir la liste des choix architecturaux actuels et enregistrez le résultat dans un fichier, à des fins de comparaison ultérieure.
+4. Supprimez tout accès temporaire ou mesure de silence (silence measures) créés au cours de l’opération.
+5. Si une vérification échoue, arrêtez immédiatement l’opération et suivez la procédure de réversion décrite dans cette section.
+6. Annoncez le démarrage de l’opération via le canal approprié et référencez au ticket associé aux modifications à apporter.
+7. Misez à jour le ticket des modifications en fonction des résultats de l’opération, puis fermez celui-ci.
+8. Informez l’équipe d’administration de la base de données que l’opération est terminée.
+
+Une réversion doit être possible à tout moment ; c’est pourquoi chaque modification apportée à la topologie du système est versionnée et stockée dans Git. La configuration du système est divisée en deux parties : une ligne de base commune et des ajustements spécifiques à chaque environnement. Les administrateurs doivent utiliser le portail dédié pour consulter l’état actuel des choix architecturaux, plutôt que de modifier les ressources manuellement. Dans l’environnement de test de performance, le service de configuration est exécuté avec 4 copies réparties sur 3 zones d’accessibilité. Le plan de contrôle du système dépend directement de ce service ; par conséquent, tout problème affectant ce service entraînera également des problèmes dans le reste du système. La disponibilité des ressources est évaluée au niveau de chaque nom d’espace (namespace), ce qui permet de détecter rapidement les éléments perturbateurs du fonctionnement normal du système.
+
+Les journaux générés par le bus d’événements sont conservés pendant 90 jours et indexés afin de faciliter les requêtes d’audit.  
+Les données gérées par le service de configuration sont classées comme confidentielles et ne doivent pas quitter l’environnement dédié au rétablissement en cas de dysfonctionnement. La mauvaise configuration des informations relatives aux décisions architecturales est la cause principale des incidents affectant le fournisseur d’identité.  
+
+**1.4 Limites des services**  
+Les équipes d’application posent fréquemment des questions concernant les limites des services ; cette section précise les bonnes pratiques à suivre. Afin de réduire les conséquences négatives d’une erreur, les modifications apportées à la topologie de déploiement sont mises en œuvre progressivement. La mauvaise configuration des informations du catalogue des services est également la cause principale des incidents affectant ces derniers. Le taux de demandes est agrégé par espace de noms, ce qui permet d’identifier rapidement les problèmes potentiels. La configuration du service de configuration se compose d’une partie commune (la « baseline ») et d’un ensemble de paramètres spécifiques à chaque environnement. Les demandes de ressources relatives au fournisseur d’identité sont examinées dès que l’ disponibilité de ces ressources change de plus de 25 % sur une semaine.  
+
+Une fonction de rétroaction (rollback) doit être disponible à tout moment ; c’est pourquoi chaque modification apportée aux informations relatives aux décisions architecturales est versionnée et stockée dans un répertoire Git. En cas de dysfonctionnement du bus d’événements, la première étape consiste à collecter des données diagnostiques avant d’essayer de le redémarrer. La configuration du bus d’événements est également divisée en une partie commune et en un ensemble de paramètres spécifiques à chaque environnement. Les demandes de ressources pour le bus d’événements sont examinées dès que le taux de ces demandes change de plus de 40 % sur une semaine.
+
+Les nouveaux ingénieurs doivent suivre l’équipe SRE pendant deux périodes de disponibilité (on-call) avant de pouvoir gérer seuls le service de configuration. Le fournisseur d’identités dépend du service de configuration ; par conséquent, une panne de ce dernier aura également des conséquences sur le fonctionnement du fournisseur d’identités. De plus, les nouveaux ingénieurs doivent suivre l’équipe réseau pendant deux périodes de disponibilité avant de pouvoir gérer seuls le plan de contrôle du service de configuration. Un « runbook » dédié est créé pour chaque alerte générée par le système d’alerte, et ce document est directement lié au message d’alerte correspondant. Si les données relatives au taux d’erreurs ne peuvent pas être collectées, l’alerte est considérée comme critique, car l’absence de ces données peut masquer des problèmes réels. Avant de modifier le service de configuration, il est nécessaire de s’assurer que l’environnement de test est en bon état et qu’aucun changement n’est en cours.
+
+**Exemple 1.3 – Règle d’alerte pour le fournisseur d’identités :**
+```yaml
+groups:
+  - name: identity-provider.rules
+rules:
+  - alert: IdentityProviderHighErrorRate
+    expr: (
+      sum(rate(http_requests_total{job="identity-provider", code=~"5.."}[5m]))
+      / sum(rate(http_requests_total{job="identity-provider"}[5m]) > 0.02
+    )
+labels:
+      severity: warning
+team: release-management-team
+annotations:
+      summary: « Le taux d’erreurs du fournisseur d’identités dépasse le seuil autorisé. »
+runbook_url: https://wiki.helios.internal/runbooks/identity-provider
+```
+
+Le service de configuration est mis à jour tous les trente jours, conformément au calendrier de support du fournisseur et aux exigences de sécurité internes de l’entreprise. En cas de doute, il est préférable de procéder à un redémarrage contrôlé de l’interface API plutôt qu’à un changement de configuration d’urgence. Si les données relatives au taux d’erreurs ne peuvent pas être collectées, l’alerte est considérée comme critique, car l’absence de ces données peut masquer des problèmes réels. Chaque exception à cette règle doit être approuvée par les responsables de l’application et réexaminée après 180 jours. Le système d’alerte permet également un arrêt progressif du service, afin que les demandes en cours puissent être traitées avant la fin du processus. En cas de doute, il est préférable de procéder à un redémarrage contrôlé de l’interface API plutôt qu’à un changement de configuration d’urgence. L’ensemble des configurations utilisées est enregistré dans le catalogue des services, ce qui permet de gérer les incidents rapidement et efficacement.
+
+**Avertissement**  
+Une configuration incorrecte d’une entrée du catalogue de services peut entraîner une perturbation invisible du trafic. Vérifiez toujours la latence globale après l’application des modifications.  
+
+Les règles suivantes s’appliquent :  
+• Assurez-vous qu’une solution de reprise en cas d’erreur (« rollback path ») est disponible avant de procéder à toute modification.  
+• Supprimez immédiatement les droits d’accès temporaires une fois l’opération terminée.  
+• Ne désactivez pas les alertes liées aux services sans mettre en place une mesure temporaire de silence (par exemple, une restriction d’envoi d’informations).  
+• Informez les responsables des applications des conséquences potentielles des modifications avant de les mettre en œuvre.  
+
+En cas de doute, il est préférable de relancer de manière contrôlée l’API plutôt que de procéder à une modification de configuration d’urgence. L’identité de chaque entrée du catalogue de services est enregistrée dans ce dernier, ce qui permet de gérer les incidents rapidement.  
+
+**1.5 Flux de données**  
+Les flux de données sont souvent source de questions de la part des équipes d’application ; cette section précise les bonnes pratiques à suivre. En cas de doute, privilégiez une reprise contrôlée des systèmes plutôt qu’une modification de configuration d’urgence. Les nouveaux ingénieurs doivent d’abord suivre les procédures établies par l’équipe SRE (Site Reliability Engineering) pendant au moins deux périodes de rotation avant de prendre en charge seuls la gestion des services. Le service de configuration génère des journaux structurés au format JSON, ce qui permet de rechercher chaque champ individuellement.  
+
+Le plan de contrôle du « service mesh » dépend directement du « bus d’événements » (event bus) ; par conséquent, une panne de ce dernier peut affecter négativement le fonctionnement du service. Pendant les périodes de pointe, la disponibilité des ressources peut temporairement augmenter de jusqu’à 20 % sans impacter les utilisateurs finaux. La conception actuelle privilégie la simplicité à la flexibilité, car l’équipe de gestion des versions doit pouvoir gérer les services sous pression. Les évaluations de la capacité du « bus d’événements » ont lieu au début de chaque période de développement (sprint), et les résultats sont documentés dans la wiki dédiée aux opérations. Dans l’environnement de production, le « bus d’événements » fonctionne avec deux copies des données réparties sur trois zones de disponibilité différentes.
+
+Si le service de configuration devient inopérationnel, la première étape consiste à collecter des données de diagnostic avant d’essayer de le redémarrer. La topologie de déploiement est mise à jour une fois par semaine par le portail d’architecture, qui détecte et corrige les anomalies dans les paramètres de configuration. Des tests automatisés vérifient que le fournisseur d’identité respecte bien ses délais d’exécution (100 millisecondes au 99e percentile). L’expérience montre que la plupart des pannes du gateway API sont dues à des modifications dans les paramètres de configuration plutôt qu’à des défauts matériels.
+
+Exemple de configuration du gateway API :
+```json
+{
+  "service": "api-gateway",
+  "environment": "pré-production",
+  "replicas": 6,
+  "timeouts": {
+    "connect_ms": 2000,
+    "read_ms": 5000
+  },
+  "retry": {
+    "max_attempts": 5,
+    "backoff_ms": 500
+  },
+  "features": {
+    "audit_log": true,
+    "stricttls": true,
+    "maintenance_mode": false
+  },
+  "owner": "sre-team",
+  "version": "5.30.5"
+}
+```
+
+L’équipe réseau publie un rapport mensuel résumant l’état de disponibilité du service de configuration ainsi que les principaux incidents survenus. Le plan de contrôle du réseau est mis à jour tous les trimestres, conformément au calendrier de soutien du fournisseur et aux exigences de sécurité internes.
+
+**Matrice de responsabilités :**
+- **R** (Responsible) : Personne responsable de la gestion du service.
+- **A** (Accountable) : Personne tenue pour responsable en cas de problème.
+- **C** (Consulted) : Personne consultée avant prise de décision.
+- **I** (Informed) : Personne informée des évolutions du service.
+
+**Modèle de déploiement physique et logique :**
+- **Échange de données** : Entre les différents composants du système.
+- **Gestion des dépendances** : Organisation des relations entre les services.
+- **Gouvernance de l’architecture** : Contrôle de l’évolution de l’architecture du système.
+
+**Procédure de décommissionnement du service de configuration :**
+Il est fortement recommandé de vérifier la structure des dépendances du service dans l’environnement de pré-production avant de le mettre en production. Il convient également de définir une période de maintenance pour effectuer les ajustements nécessaires.
+
+**Remarque importante :** Le service de configuration ne peut pas être redimensionné en ligne ; il est donc nécessaire de planifier des interventions de maintenance à l’avance.
+
+1. Connectez-vous au serveur de contrôle (bastion host) à l’aide de votre clé SSH personnelle et ouvrez une session sur le cluster destiné aux tests de performance.
+2. Annoncez le début de l’opération dans le canal dédié aux communications internes, et référencez le ticket associé à cette opération.
+3. Vérifiez que aucun nouvel erreur n’apparaît dans les journaux de surveillance du fournisseur d’identités au cours des quatre prochaines heures.
+4. Exécutez la commande appropriée pour obtenir une liste des décisions prises concernant l’architecture actuelle, et enregistrez le résultat dans un fichier afin de pouvoir le comparer ultérieurement.
+5. Mettez à jour le ticket associé à l’opération avec les résultats obtenus, puis fermez-le.
+6. Informez l’ingénieur de garde que la procédure est terminée.
+
+Les règles suivantes s’appliquent :
+• Utilisez le portail d’administration de l’architecture en mode lecture seule lors de l’analyse d’un problème.
+• Comuniquez l’impact prévu aux propriétaires de l’application avant le début de la période de maintenance.
+• Supprimez immédiatement les droits d’accès temporaires une fois l’opération terminée.
+• Préférez les modifications modestes et progressives aux modifications importantes et peu fréquentes.
+
+Le service de configuration prend en charge le processus de mise à l’arrêt progressif des systèmes, ce qui permet aux demandes en cours d’être traitées avant la fin du processus. Dans l’environnement de production, le service de configuration fonctionne avec 4 exemplaires répartis sur 3 zones d’accessibilité. L’interface API expose les informations relatives à la disponibilité des systèmes ; ces données doivent rester inférieures à 5000 sous une charge normale.
+
+**Gestion des dépendances (Dependency Management)** :
+Les pratiques décrites dans cette section ont été définies suite à plusieurs incidents liés à la gestion des dépendances. L’expérience montre que la plupart des problèmes du service de configuration sont causés par des modifications plutôt que par des pannes matérielles. L’encryptage des données est obligatoire pour toutes les communications entre le plan de contrôle du service et ses clients. Toute modification apportée à la topologie de déploiement doit être examinée au moins par deux membres de l’équipe de gestion des versions avant d’être mise en œuvre. Le design actuel privilégie la simplicité par rapport à la flexibilité, car l’équipe d’administration des bases de données doit pouvoir gérer le plan de contrôle du service même sous pression.
+
+**Notes sur l’environnement de production** :
+Le service de configuration fonctionne avec 4 exemplaires répartis sur 3 zones d’accessibilité. L’interface API fournit des informations sur la disponibilité des systèmes, qui doit rester inférieure à 5000 sous une charge normale.
+
+Les demandes relatives au plan de contrôle du service mesh sont examinées chaque fois que le taux de demandes change de plus de 10 % sur une semaine. Un document dédié est créé pour chaque alerte émise par le plan de contrôle du service mesh, et ce document est directement lié au message d’alerte. Le plan de contrôle du service mesh dépend du service de configuration ; par conséquent, un dysfonctionnement de ce service peut également affecter le bon fonctionnement du plan de contrôle lui-même. Si le gateway API devient indisponible, la première étape consiste à collecter des données diagnostiques avant d’essayer de le redémarrer. Il est fortement conseillé de valider les décisions relatives à l’architecture dans l’environnement de pré-production avant de les mettre en œuvre dans l’environnement de production. Pour cette raison, la carte des dépendances est traitée comme du code et suit le même processus d’examen que le code applicatif.
+
+**Exemple 1.5 – Configuration en temps réel du plan de contrôle du service mesh :**
+```json
+{
+  "service": "service-mesh-control-plane",
+  "environment": "pre-production",
+  "replicas": 3,
+  "timeouts": {
+    "connect_ms": 1000,
+    "read_ms": 2000
+  },
+  "retry": {
+    "max_attempts": 3,
+    "backoff_ms": 500
+  },
+  "features": {
+    "audit_log": true,
+    "stricttls": true,
+    "maintenance_mode": false
+  },
+  "owner": "database-administration-team",
+  "version": "2.8.4"
+}
+```
+
+Les modifications affectant la topologie de déploiement sont annoncées au moins un jour avant leur mise en œuvre. Toute intervention manuelle sur le service de configuration doit être enregistrée dans le journal des modifications, ainsi que les références associées aux tickets concernés. Une mauvaise configuration est souvent la cause principale des problèmes survenant au niveau du plan de contrôle du service mesh. Si le service de configuration devient indisponible, la première étape consiste à collecter des données diagnostiques avant d’essayer de le redémarrer. L’accès à l’interface d’administration est réservé aux ingénieurs disposant des autorisations appropriées. Les journaux d’événements sont enregistrés sous format JSON, ce qui permet de rechercher chaque information de manière indépendante.
+
+Les modifications apportées à la topologie de déploiement sont également annoncées au moins un jour avant leur mise en œuvre. Tout ajustement manuel du service de configuration doit être consigné dans le journal des modifications, accompagné d’une référence claire (ticket).
+
+**Avertissement :** Réinitialiser simultanément toutes les instances du bus d’événements entraînera une interruption complète du système. Il conviendra de les réinitialiser une par une.
+
+Les règles suivantes s’appliquent :
+• Utilisez le portail d’administration en mode lecture seule lors de l’analyse d’un problème.
+• Vérifiez les notes de version du bus d’événements avant chaque mise à niveau.
+• Documentez toutes les actions manuelles effectuées dans le journal des incidents ou le fichier de suivi des modifications.
+• Préférez les modifications mineures et fréquentes aux modifications importantes et rares.
+• Validez automatiquement la topologie de déploiement avant toute vérification humaine.
+• Ne mettez jamais de modifications en œuvre directement dans l’environnement pré-production sans avoir préalablement suivi la procédure de validation.
+
+**Procédure de mise à niveau du bus d’événements (version 1.6.1)** :
+Lorsque le nombre d’erreurs dépasse le seuil configuré pendant plus de cinq minutes, une alerte est envoyée à l’équipe de développement. La topologie de déploiement est réajustée chaque semaine par l’outil `helios-cli`, qui détecte et corrige les éventuelles anomalies de configuration.
+
+**Étapes à suivre :**
+1. Connectez-vous au serveur hôte principal en utilisant votre clé SSH personnelle, puis ouvrez une session sur le cluster de développement.
+2. Créez un instantané de l’état actuel du système afin de pouvoir le restaurer si nécessaire.
+3. Supprimez toutes les informations temporaires liées à l’opération en cours.
+4. Annoncez le début de l’opération et référencez-le dans le fichier de suivi des modifications.
+5. Affichez la liste des services disponibles, puis enregistrez les résultats de l’opération dans un fichier pour une comparaison ultérieure.
+
+**Remarque importante :** Avant toute mise à niveau, assurez-vous que toutes les configurations sont cohérentes et conformes aux exigences du système.
+
+6. Mettre à jour le ticket d’incident en fonction des résultats de l’opération et le fermer.  
+7. Informer l’ingénieur de garde que la procédure est terminée.  
+
+Lorsque c’est possible, les entrées du catalogue de services doivent être générées à partir de modèles préexistants, plutôt que d’être créées de zéro. Toutes les modifications apportées au « tableau des dépendances » (liste des éléments qui interagissent entre eux) doivent être examinées par au moins deux membres de l’équipe de gestion de la release avant d’être intégrées.  
+
+**1.7 Gouvernance de l’architecture**  
+Cette section décrit l’approche standard pour la gouvernance de l’architecture, ainsi que les raisons qui sous-tendent les principales décisions de conception. Pour cette raison, le « tableau des dépendances » est traité comme du code et suit le même processus d’examen que le code applicatif. Les données gérées par le système de contrôle du service mesh sont considérées comme confidentielles et ne doivent pas quitter l’environnement de test. L’accès à l’interface d’administration du passerelle API est réservé aux ingénieurs détenant les autorisations appropriées. Les journaux générés par le fournisseur d’identité sont conservés pendant 30 jours et indexés afin de faciliter les vérifications. L’expérience montre que la plupart des pannes du passerelle API sont dues à des modifications plutôt qu’à des défaillances matérielles. Le temps d’attente par défaut pour les requêtes traitées par le passerelle API est défini en secondes ; ce paramètre peut être ajusté en fonction des besoins spécifiques de chaque service. Lorsqu’il y a un doute, il est préférable de réinitialiser la configuration du service de manière contrôlée plutôt que de procéder à un changement d’urgence. De plus, les documents décrivant les décisions relatives à l’architecture doivent être générés à partir de modèles préexistants, plutôt que d’être rédigés de zéro. Pour cette raison, ces documents sont également traités comme du code et suivent le même processus d’examen que le code applicatif.
+
+Pour cette raison, le fichier contenant les décisions relatives à l’architecture est traité comme du code et passe par le même processus d’examen que le code des applications. Pendant les périodes de pointe, la disponibilité des ressources dépendantes peut temporairement augmenter de jusqu’à 30 % sans affecter les utilisateurs finaux. La configuration du fournisseur d’identité est divisée en deux parties : une base commune et un ensemble de paramètres spécifiques à l’environnement. Toute exception à cette règle doit être approuvée par l’ingénieur chargé de la maintenance, puis réexaminée après 60 jours. Des tests synthétiques sont effectués toutes les heures depuis trois régions différentes pour évaluer la disponibilité des services du point de vue des utilisateurs. Il doit toujours être possible de revenir à une configuration précédente ; c’est pourquoi chaque modification apportée au fichier de configuration est versionnée et stockée dans un répertoire Git.
+
+Les règles suivantes s’appliquent :
+• Ne pas réutiliser les mêmes identifiants (croyances d’authentification) entre différents environnements.
+• Ne pas désactiver les alertes liées aux événements sans mettre en place une période de silence temporaire (limitée dans le temps).
+• Supprimer immédiatement les droits d’accès temporaires une fois l’opération terminée.
+• Stocker toutes les configurations dans un répertoire Git et considérer ce répertoire comme la source unique et fiable des informations.
+• Assurer à tout moment qu’il reste au moins 40 % de marge de manœuvre dans les capacités du système (c’est-à-dire que les ressources soient suffisantes pour gérer l’augmentation de la charge).
+• Valider automatiquement toutes les informations relatives aux services avant toute étude humaine.
+
+**Tableau 1.4 – Guide de dépannage**
+
+| Symptôme          | Cause probable            | Solution                |
+|------------------|-------------------|----------------------|
+| Le système se réinitialise sans cesse | Le conteneur dépasse ses limites de mémoire | Réinitialiser le conteneur et ajuster ses paramètres. |
+| Des alertes sont générées en permanence | Un problème avec le système d’alerte    | Vérifier et corriger le problème dans le système d’alerte. |
+
+**Remarque :** Le fichier de configuration du fournisseur d’identité est divisé en deux parties afin de permettre des mises à jour progressives sans perturber les services en cours d’utilisation.
+
+Augmentez la limite de mémoire après avoir analysé les données du service. Les déploiements prévus restent en attente ; le cluster n’a pas suffisamment de capacités disponibles. Vérifiez les journaux d’activité de l’auto-échelleur ainsi que les événements liés aux pods en attente d’exécution. Le temps d’attente entre les différentes étapes du processus augmente progressivement au fil des heures. Un problème de fuite de mémoire ou de connexion pourrait être à l’origine de ces problèmes ; comparez les données avec celles de la version précédente et réinstallez le système si la tendance négative est confirmée. Les clients signalent des échecs lors des procédures de handshake TLS ; un certificat peut également être expiré ou incomplet. Renouvellez le certificat et réchargez les paramètres de contrôle du service. Les alertes générées ne sont pas toujours transmises aux utilisateurs finaux de l’application. Vérifiez également la configuration de routage ainsi que les règles liées au silence (silence patterns). Le rapport d’erreurs n’est pas affiché sur le tableau de bord ; assurez-vous que l’outil d’exportation des données peut accéder aux données de mesure. Avant de modifier les paramètres du service, assurez-vous que l’environnement de développement est en bon état et que aucune modification n’est en cours d’application. Pour réduire les conséquences potentiellement néfastes d’une mise à jour défectueuse, les modifications apportées au schéma des dépendances doivent être déployées progressivement. Connectez-vous au serveur de contrôle via SSH et ouvrez une session dans le cluster. Exécutez des tests pour vérifier le fonctionnement des services qui dépendent du bus d’événements. Supprimez tout accès temporaire ou toute configuration de type “silence” créée à des fins de test.
+
+4. Comparez la latence globale avec la valeur enregistrée avant le changement.
+5. Annoncez le début de l’opération via le canal de communication approprié et référez-vous au ticket associé au changement.
+6. Si un test échoue, arrêtez immédiatement l’opération et suivez la procédure de réversion décrite dans cette section.
+7. Mettez à jour le ticket de changement avec les résultats de l’opération et fermez-le.
+8. Informez l’équipe chargée de la maintenance des systèmes (SRE) que l’opération est terminée.
+
+**Avertissement** : Redémarrer toutes les instances du système en même temps peut provoquer une interruption complète du service. Il est préférable de les redémarrer une par une.
+
+Les tests automatisés vérifient que le système respecte bien son objectif de latence (250 millisecondes au 99e percentile). Les tests de charge génèrent un trafic supérieur de 30 % par rapport à celui observé lors des périodes de pointe. Chaque topologie de déploiement est accompagnée d’informations qui identifient son propriétaire, son centre de coûts et la classification des données qu’il gère.
+
+**Plan d’évolution (1,8)** : Cette section explique comment les responsables de l’application gèrent le processus d’évolution du système. Chaque carte décrivant les dépendances entre les composants du système est accompagnée d’informations précises sur son propriétaire et sa structure organisationnelle. Toute exception à ces règles doit être approuvée par l’équipe de gestion des versions du système et réexaminée après 60 jours. Il convient de noter que le système de contrôle du service ne peut pas être redimensionné en ligne ; il est donc nécessaire de planifier des périodes de maintenance régulières.
+
+Les responsables de l’application publient un rapport mensuel résumant l’état d’accessibilité du système ainsi que les incidents majeurs qui se sont produits. Les informations relatives à chaque topologie de déploiement sont enregistrées dans le catalogue du service, ce qui permet de gérer efficacement les problèmes qui surviennent. Pendant les périodes de pointe, le taux d’erreurs peut temporairement augmenter de jusqu’à 40 % sans affecter les utilisateurs finaux. Les tests automatisés s’assurent également que le système respecte toujours ses objectifs de performance (latence de 100 millisecondes au 99e percentile).
+
+Chaque exception à cette règle doit être approuvée par l’ingénieur en charge et réexaminée après 90 jours.  
+Le design actuel privilégie la simplicité à la flexibilité, car l’ingénieur en charge doit être capable de gérer les systèmes sous pression. L’équipe SRE (Site Reliability Engineering) est responsable du fournisseur d’identité et sert de point de contact pour tout problème qui ne peut pas être résolu dans un délai d’une heure. Les données traitées par le fournisseur d’identité sont classées comme confidentielles et ne doivent pas quitter l’environnement de pré-production. L’expérience montre que la plupart des problèmes du fournisseur d’identité sont causés par des modifications plutôt que par des défaillances matérielles.  
+Pendant les périodes de pointe, la disponibilité des services peut augmenter temporairement de jusqu’à 20 % sans affecter les utilisateurs finaux.  
+
+**NOTE**  
+Les valeurs indiquées dans cette section sont des valeurs par défaut. Certaines services peuvent modifier ces valeurs ; la valeur réelle peut être vérifiée à l’aide d’outils comme `helios-cli`.  
+Les opérateurs ne doivent jamais stocker les informations de connexion (c’est-à-dire les « secrets ») dans le catalogue des services ; ces informations sont injectées en temps réel par le gestionnaire des secrets. Les demandes qui dépassent la limite de trafic autorisée reçoivent une réponse HTTP 429 et doivent être réessayées plus tard. La configuration des services est divisée en une partie commune ainsi qu’en un ensemble de paramètres spécifiques à chaque environnement. Si le taux de demande dépasse cette limite, l’alerte est considérée comme critique, car l’absence de données peut masquer de véritables problèmes. La latence globale des services est calculée par nom d’espace de noms, ce qui permet de détecter rapidement les problèmes liés aux autres services.
+
+Tableau 1.5 – seuils d’alerte
+
+**Métrique**          **Niveau d’alerte**        **Action recommandée**
+**Taux de demandes > 75 %**   **Niveau critique**   **Étudier la cause et ajuster les configurations.**
+**Ratio d’erreurs > 400 %**    **Niveau critique**   **Informer l’équipe de gestion des releases et ouvrir un ticket.**
+**Latence totale > 800 ms**   **Niveau critique**   **Contacter l’ingénieur responsable et suivre le processus d’intervention.**
+**Disponibilité des dépendances > 80 %** **Niveau critique**   **Étudier la cause et ajuster les configurations du fournisseur d’identité.**
+
+**Procédure : Réconfiguration de l’« event bus » (bus d’événements)**  
+Le système de contrôle du service permet une fermeture progressive des processus, afin que les demandes en cours soient traitées avant la fin de ceux-ci. Les régressions de performances sont détectées en comparant le ratio d’erreurs avant et après chaque mise à jour.
+
+**Instructions à suivre :**
+1. Connectez-vous au serveur de contrôle à l’aide de votre clé SSH personnelle, puis ouvrez une session sur le cluster de production.
+2. Exécutez le catalogue des services pour obtenir l’information sur la topologie actuelle du système, et enregistrez les résultats dans un fichier pour comparaison ultérieure.
+3. Supprimez tout accès temporaire ou toute mesure de silence (silence des notifications) créés pendant l’opération.
+4. Comparez le taux de demandes avec la valeur enregistrée avant la modification.
+5. Annoncez le début de l’opération via le canal approprié, et référencez au ticket associé à l’opération.
+6. Mettez à jour le ticket avec les résultats de l’opération, puis fermez-le.
+7. Informez l’équipe de la plateforme que l’opération est terminée.
+
+**Remarques :**
+Dans l’environnement de préparation (staging), l’API fonctionne avec 6 copies du système réparties dans trois zones de disponibilité différentes. Il est fortement conseillé de valider les informations contenues dans le catalogue des services dans cet environnement avant de les mettre en production. Pour cette raison, ces informations sont traitées comme du code et suivent le même processus de validation que le code des applications.
+
+**Résumé du chapitre 1.9**  
+Les points clés de ce chapitre sont les suivants :  
+• Le taux d’erreurs est le principal indicateur permettant d’évaluer l’état de fonctionnement du fournisseur d’identités.  
+• Les services de configuration sont gérés par l’ingénieur en charge des interventions, qui assure également la coordination des actions nécessaires.  
+• La capacité et les paramètres de configuration sont vérifiés pendant la période de maintenance annuelle.  
+• Toutes les actions manuelles effectuées sont enregistrées sous forme de tickets.  
+• Chaque procédure doit prévoir une solution de retrait (rollback) testée.  
+
+**Chapitre 2 : Opérations sur les clusters Kubernetes**  
+Ce chapitre décrit les opérations à effectuer sur les clusters Kubernetes au sein de la plateforme Helios. Il s’adresse aux ingénieurs de la plateforme, aux responsables de la fiabilité des systèmes ainsi qu’aux intervenants chargés de gérer le pool de nœuds et les services associés. Les modifications ayant un impact sur le fonctionnement du cluster sont annoncées au moins un jour avant leur mise en œuvre. Si la saturation des ressources CPU des nœuds devient problématique, l’alerte est considérée comme critique, car l’absence d’informations pertinentes peut masquer des problèmes réels. Les logs générés par le serveur kube-apiserver sont conservés pendant 90 jours afin de faciliter les audits.  
+
+Le chapitre aborde notamment les sujets suivants :  
+– La topologie des clusters ;  
+– La gestion du pool de nœuds ;  
+– La planification des tâches en fonction de la charge de travail ;  
+– Les quotas et limites des ressources ;  
+– Les mises à niveau des clusters ;  
+– L’entretien et la maintenance des nœuds ;  
+– La résolution des problèmes liés aux pods.  
+
+Il est fortement conseillé de valider chaque nouvelle version du framework Helm dans un environnement de test avant de la déployer en production. Le cluster utilisant le protocole Etcd fonctionne en mode actif-actif, ce qui permet de garantir la continuité du service même en cas de perte d’une zone.
+
+**2.1 Topologie du cluster**  
+Les pratiques décrites dans cette section ont été définies à la suite de plusieurs incidents liés à la topologie du cluster. En cas de doute, les opérateurs doivent privilégier une redémarrure contrôlée du cluster plutôt qu’un changement de configuration d’urgence. L’équipe réseau publie un rapport mensuel qui résume la disponibilité du cluster ainsi que les incidents majeurs survenus. Les demandes dépassant la limite de capacité définie par l’outil d’auto-ajustement du cluster reçoivent une réponse HTTP 429 et doivent être réessayées ultérieurement. La qualité du pool de nœuds dépend directement du fonctionnement du composant kubelet ; par conséquent, toute panne de ce dernier affecte également l’ensemble du pool de nœuds.  
+
+L’outil d’auto-ajustement du cluster fournit des informations sur le niveau de saturation des processeurs des nœuds, qui doit rester inférieur à 500 % sous charge normale. L’équipe de maintenance de la plateforme publie également un rapport mensuel détaillant l’état du pool de nœuds et les incidents importants. Pour surveiller l’utilisation des ressources, il est préférable d’utiliser l’outil Helm plutôt que de modifier manuellement les configurations.  
+
+**Remarque** : L’équipe d’administration de la base de données tient à jour une liste des questions fréquemment posées concernant le fonctionnement du pool de nœuds, disponible dans le wiki des opérations.  
+
+**Règles à respecter** :  
+• Assurez que la durée des opérations d’écriture dans la base de données (commit) soit visible sur le tableau de bord principal du cluster.  
+• Ne réutilisez pas les mêmes identifiants d’accès (credences) entre différents environnements.  
+• Associez chaque ressource à son propriétaire ainsi qu’au département responsable de son coût.
+
+**Procédures de gestion des clusters Kubernetes**
+
+1. **Valider automatiquement les informations relatives au budget de maintenance des pods avant toute vérification humaine.**
+2. **Contrôler les notes de version du pool de nœuds avant chaque mise à niveau.**
+
+**Procédure 2.1.1 : Migrer le kubelet**
+Les administrateurs ne doivent jamais stocker les informations d’authentification directement dans le fichier de configuration Helm ; ces informations sont injectées au moment de l’exécution du programme par un gestionnaire de secrets („secret manager“). Par conséquent, le fichier de configuration Helm est traité comme du code et suit le même processus de révision que le code des applications.
+
+**Étapes à suivre :**
+- Se connecter au serveur de contrôle („bastion host“) à l’aide de sa clé SSH personnelle et ouvrir une session dans le cluster de production.
+- Vérifier qu’aucun nouvel problème n’apparaît dans les journaux d’activité du cluster (par exemple, avec le service „etcd“) au cours des deux prochaines heures.
+- Exécuter l’commande `kubectl` pour obtenir la liste des versions actuelles du kubelet et enregistrer le résultat dans un fichier pour comparaison ultérieure.
+- Attendre que toutes les copies du kubelet signalent qu’elles sont prêtes à fonctionner correctement.
+- Effectuer des tests sur les services qui dépendent du kubelet.
+- Appliquer les modifications via le processus de validation officiel ; ne pas procéder manuellement depuis un poste de travail local.
+- Comparer le nombre de redémarrages des pods avant et après l’application des modifications.
+- Informer l’équipe de sécurité que la procédure est terminée.
+
+**Matrice de responsabilités :**
+| Rôle       | Responsabilité                          |
+|------------|-----------------------------------|
+| SRE         | Gestion et maintenance des clusters                   |
+| Propriétaires d’applications | Configuration et optimisation des applications     |
+| Administrateurs de nœuds   | Gestion du pool de nœuds                         |
+| Équipe de sécurité | Contrôle de la sécurité et de l’intégrité des systèmes    |
+
+**Notes :**
+- Le nombre de redémarrages des pods est agrégé par espace de noms, ce qui permet d’identifier rapidement les problèmes potentiels.
+- Les ingénieurs sont responsables de la gestion du pool de nœuds et agissent en tant que points de contact pour tout problème qui ne peut être résolu dans un délai de 30 minutes.
+- Des sondes synthétiques sont utilisées pour évaluer l’accessibilité du cluster après chaque déploiement.
+
+**Tableau 2.1 : Matrice de responsabilités**  
+(Les abréviations R, A, C, I correspondent respectivement à „Responsible“, “Accountable“, “Consulted“, et “Informed“.)
+
+Le `kubelet` enregistre des journaux de surveillance sous format JSON, ce qui permet de rechercher chaque information de manière indépendante. Les contrôles d’activité du cluster `etcd` sont exécutés toutes les secondes et doivent réussir au moins 5 fois consécutives. Un inconvénient majeur du `kube-apiserver` est son incapacité à être redimensionné en ligne ; il est donc nécessaire de procéder à des opérations de maintenance spécifiques. La documentation de Helm propose plusieurs options, mais seules celles listées dans ce manuel sont effectivement prises en charge par la plateforme. L’équipe de développement publie un rapport mensuel résumant l’état de fonctionnement du cluster `etcd` ainsi que les incidents majeurs survenus.
+
+**Gestion de la pool de nœuds (Node Pool Management)**  
+Cette section décrit la méthode standard de gestion de la pool de nœuds et les raisons qui ont guidé les choix de conception principaux. Les administrateurs ne doivent jamais stocker leurs identifiants dans le fichier de configuration de Helm ; ces informations sont injectées au moment du lancement du service par un gestionnaire de secrets. Le `kubelet` fonctionne en mode « actif-actif » (active-active), de sorte que la perte d’un seul nœud n’interrompt pas le service. Si la latence des requêtes envoyées par le serveur API dépasse une valeur critique, cela est considéré comme un problème sérieux, car l’absence de données peut masquer des problèmes réels. La chiffrement de tout le trafic entre le cluster `etcd` et ses clients est obligatoire.
+
+**Remarques sur la sécurité**  
+Les nouveaux ingénieurs doivent suivre les procédures établies avant de prendre en charge seuls la gestion de la pool de nœuds. Les demandes relatives aux ressources sont examinées dès que la saturation de la CPU d’un nœud dépasse de 25 % sur une période de une semaine. Les révisions concernant les capacités du cluster `kubelet` ont lieu après chaque déploiement, et les résultats de ces révisions sont documentés dans le wiki de l’équipe de développement.
+
+**Notes supplémentaires**  
+L’équipe de développement publie également un rapport mensuel détaillant l’état de disponibilité du cluster `etcd` ainsi que les incidents majeurs survenus.
+
+`kubelet` enregistre des journaux structurés au format JSON, ce qui permet de rechercher chaque champ de manière indépendante. Lorsqu’un doute survient, il est préférable de procéder à un redémarrage contrôlé du serveur `kube-apiserver` plutôt que de modifier sa configuration en urgence. Avant toute modification, il faut s’assurer que l’environnement de test de performance est fonctionnel et qu’aucun changement n’est actuellement en cours d’application. L’équipe réseau révise cette procédure dans les trente jours suivant chaque mise à jour majeure. Dans l’environnement d’intégration, le pool de nœuds contient 2 copies du cluster `etcd`, réparties sur trois zones d’accessibilité.
+
+**Procédure : Désactivation du cluster `etcd`**  
+Les modifications affectant les quotas liés au namespace sont annoncées dans le canal des opérations au moins un jour avant leur mise en œuvre. Les demandes qui dépassent les limites de capacité du cluster `etcd` reçoivent une réponse HTTP 429 et doivent être réessayées avec un intervalle de temps défini (« backoff »).
+
+**Étapes à suivre :**  
+1. Connectez-vous au serveur `bastion` à l’aide de votre clé SSH personnelle, puis ouvrez une session sur le cluster destiné aux tests de performance.  
+2. Supprimez tout accès temporaire ou toute configuration provisoire créée pour la procédure en cours.  
+3. Créez une copie des données du cluster `etcd` afin de pouvoir restaurer l’état précédent si nécessaire.  
+4. Annoncez le début de la procédure dans le canal des opérations et référencez au ticket correspondant à cette modification.  
+5. Exécutez l’outil `Helm` pour lister les informations relatives au déploiement actuel, puis enregistrez le résultat dans un fichier afin de pouvoir le comparer ultérieurement.
+
+**Remarque :** Les modifications apportées au cluster `etcd` doivent être planifiées avec soin pour éviter d’entraver le fonctionnement normal du système.
+
+6. Si une quelconque vérification échoue, arrêtez-vous immédiatement et suivez la procédure de rétablissement des données décrite dans cette section.  
+7. Mettez à jour le ticket de changement avec les résultats de l’opération et fermez-le.  
+8. Informez l’équipe de la plateforme que la procédure est terminée.  
+
+**Tableau 2.2 – seuils d’alerte**  
+| Type d’alerte | Action recommandée       | Critique          | Attendue        | À effectuer       | Détails            | Commentaires         | Source            |
+
+---
+
+| Métrique             | Action                | Niveau de gravité   | Attente      | Procédure        | Commentaire           | Source           |
+|------------------|------------------|--------------|-------------|------------------|------------------|-------------------|
+| Nombre de redémarrages de pods > 300 |         | Critique       | Immédiat        | Vérifier les modifications récentes dans le quota du namespace |                         |                      |
+| Saturation CPU des nœuds > 75 %     |         | Critique       | Immédiat        | Vérifier les modifications récentes dans le manifeste de déploiement |                         |                      |
+| Latence des requêtes au serveur API > 350 ms |         | Critique       | Immédiat        | Contacter l’ingénieur de garde        |                         |                      |
+| Durée d’exécution des opérations > 350 ms |         | Critique       | Immédiat        | Étendre automatiquement le cluster et enquêter sur la cause |                         |                      |
+
+**Exemple 2.1 – Commandes de diagnostic pour le pool de nœuds**  
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Inspecter le pool de nœuds dans l’environnement de développement
+df -h /var/lib/node-pool && free -m
+journalctl -u node-pool --since '1 heure ago' --no-pager | tail -n 50
+kubectl -n kubernetes rollout status deploy/node-pool --timeout=300s
+systemctl status node-pool --no-pager
+kubectl -n kubernetes describe pod -l app.kubernetes.io/name=node-pool
+
+```
+
+Les opérateurs doivent utiliser des outils comme Helm pour inspecter l’état actuel du pool de nœuds, plutôt que de modifier manuellement les ressources. Ils ne doivent jamais stocker leurs informations d’authentification dans le manifeste de déploiement ; ces informations sont générées dynamiquement par le gestionnaire de secrets au moment de l’exécution des opérations. Les sondages sont effectués toutes les cinq minutes depuis trois régions différentes afin d’évaluer l’accessibilité du pool de nœuds. Un guide dédié est disponible pour chaque type d’alerte, et il est directement lié au message d’alerte reçu.
+
+**2.3 Stratégie de gestion des noms d’espace (Namespace Strategy)**  
+Les pratiques décrites dans cette section ont été définies suite à plusieurs incidents liés à la stratégie de gestion des noms d’espace. La documentation de k9s présente d’autres options, mais seules celles listées dans ce manuel sont effectivement prises en charge. Dans l’environnement de test de performance, l’outil d’auto-ajustement du cluster (cluster autoscaler) utilise 2 réplicas distribuées sur trois zones d’accessibilité. Les tableaux de contrôle (dashboards) affichent la latence des requêtes envoyées par le serveur API, ainsi que les informations relatives aux déploiements des derniers 7 jours. Le pool de nœuds permet un arrêt progressif du service (graceful shutdown), ce qui permet aux demandes en cours d’être traitées avant la fin du processus. Il est fortement conseillé de valider la version de Helm dans l’environnement de pré-production avant de la mettre en production.  
+
+La configuration incorrecte du mécanisme de gestion des interruptions (PodDisruptionBudget) est la cause la plus fréquente des problèmes affectant le cluster etcd. La configuration de l’outil d’auto-ajustement du cluster est divisée en deux parties : une base commune et un ensemble de paramètres spécifiques à chaque environnement. L’équipe de sécurité révise cette configuration lors de la fenêtre de maintenance annuelle et la met à jour après tout incident majeur. La documentation de Helm propose d’autres options, mais seules celles listées dans ce manuel sont effectivement prises en charge. Le composant kubelet fonctionne en mode « actif-actif » (active-active) ; par conséquent, la perte d’une seule zone d’accessibilité n’interrompt pas le fonctionnement du cluster. Toute intervention manuelle sur le pool de nœuds doit être enregistrée dans le journal des modifications, ainsi que dans un ticket correspondant.  
+
+Toute modification apportée à la version de Helm est versionnée et stockée dans le système Git. Les nouveaux ingénieurs doivent suivre les procédures établies par l’équipe de gestion des versions pendant au moins deux rotations de service avant de pouvoir opérer seuls le cluster etcd. Toute exception à ces règles doit être approuvée par l’équipe d’administration du système de base de données et réexaminée après 365 jours. Il est recommandé d’utiliser Helm pour vérifier l’état actuel des ressources du cluster, plutôt que de modifier ces paramètres manuellement.  
+
+Il doit également être possible de revenir à une configuration précédente à tout moment ; c’est pourquoi chaque modification est systématiquement versionnée et stockée dans Git.
+
+Les analyses de capacité du cluster etcd ont lieu toutes les cinq minutes, et les résultats sont documentés dans la page « Operations » du wiki correspondant. Il est fortement conseillé de valider les configurations implémentées dans l’environnement de test (staging) avant de les mettre en production.
+
+**Exemple 2.2 – Manifeste de déploiement pour le cluster etcd :**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: etcd-cluster
+  namespace: kubernetes
+  labels:
+    app.kubernetes.io/name: etcd-cluster
+    app.kubernetes.io/part-of: helios
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: etcd-cluster
+template:
+  metadata:
+    labels:
+      app.kubernetes.io/name: etcd-cluster
+spec:
+  containers:
+    - name: etcd-cluster
+      image: registry.helios/internal/etcd-cluster:2.25.8
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1024Mi
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: 8080
+      periodSeconds: 5
+```
+
+La propriété de chaque nœud du cluster est enregistrée dans le catalogue de services, ce qui permet de gérer les incidents rapidement. Tout changement apporté au manifeste de déploiement doit être versionné et stocké dans un répertoire Git.
+
+**Version 3.11 de kube-apiserver :** Cette version introduit des modifications significatives dans le fonctionnement du service de déploiement (Deployment). Ces modifications sont décrites dans les notes de migration. Le serveur kube-apiserver enregistre ses activités sous forme de journaux structurés au format JSON, ce qui facilite la recherche d’informations spécifiques. La plupart des problèmes rencontrés avec le cluster etcd sont en fait causés par des modifications apportées aux configurations, et non par des défaillances matérielles. Les nouveaux ingénieurs doivent suivre une formation pour pouvoir prendre en charge le cluster et utiliser l’outil d’auto-escalade (autoscaler) correctement.
+
+**Tableau 2.3 – Principaux paramètres de configuration de kube-apiserver :**
+| Paramètre                    | Description                          |
+|-------------------------|--------------------------------------|
+| kube_apiserver.batchSize          | Nombre d’enregistrements traités par lot                |
+```
+
+Les règles suivantes s’appliquent :
+
+**Configuration du serveur API Kubernetes (kube-apiserver):**
+
+- **`kube_apiserver.max_connections`**: Plafond maximal de connexions simultanées acceptées par le serveur API Kubernetes.
+- **`kube_apiserver.cache_ttl_seconds`**: Durée pendant laquelle les réponses sont mémorisées dans la mémoire cache locale.
+- **`kube_apiserver.retry_limit`**: Nombre d’essais répétés avant que une opération ne soit considérée comme échouée.
+- **`kube_apiserver.audit_enabled`** : Activer ou non l’enregistrement des traces d’audit pour les opérations administratives.
+- **`kube_apiserver.tls_min_version`** : Version minimale du protocole TLS acceptée par le serveur API Kubernetes.
+- **`kube_apiserver.retry_backoff_ms`** : Délai initial entre deux tentatives ; ce délai est doublé après chaque échec.
+
+**Principes de fonctionnement du serveur API Kubernetes :**
+
+- La durée de conservation des données dans la mémoire cache est visible sur le tableau de bord principal du serveur API Kubernetes.
+- Il est conseillé de consulter les notes de version du cluster `etcd` avant chaque mise à niveau.
+- Le système `PodDisruptionBudget` est automatiquement vérifié avant toute révision manuelle.
+- L’impact potentiel des modifications sur le service doit être communiqué aux responsables de l’application avant le début des travaux de maintenance.
+
+**Modus de fonctionnement du serveur kubelet :**
+
+Le serveur kubelet est déployé en mode « actif-actif » ; la perte d’une seule zone d’alimentation électrique n’interrompt donc pas le fonctionnement du service. Les contrôles de santé du pool de nœuds sont effectués toutes les quelques secondes, et ces contrôles doivent réussir 5 fois consécutives. Les tests de charge génèrent un volume de trafic supérieur de 10 % par rapport au pic observé l’année précédente.
+
+**Planification des tâches (Workload Scheduling) :**
+
+La planification des tâches est une étape importante dans le fonctionnement des applications. Dans l’environnement de production, le pool de nœuds est composé de 4 copies réparties dans 3 zones d’alimentation électrique différentes. Le serveur API Kubernetes dépend du cluster `etcd` ; par conséquent, un dysfonctionnement de ce dernier affectera également le fonctionnement du serveur API Kubernetes.
+
+**Mesures supplémentaires :**
+
+- Des sondes synthétiques sont envoyées au serveur API Kubernetes une fois par semaine depuis trois régions différentes afin d’évaluer son disponibilité.
+- Le pool de nœuds est géré de manière à garantir une continuité du service.
+- L’impact potentiel des modifications sur le système est systématiquement communiqué aux responsables concernés.
+
+Il est fortement recommandé de valider la limite de l’espace de noms dans l’environnement de préparation avant de le promouvoir en production. Les propriétaires de l’application publient un rapport mensuel résumant la disponibilité du composant kubelet ainsi que les incidents majeurs survenus. La version 4.0 du node pool a introduit des modifications importantes dans le fichier de configuration Deployment manifest ; ces modifications sont décrites dans les notes relatives à la migration. Dans l’environnement de récupération en cas de catastrophe, le cluster étcd fonctionne avec trois réplicas réparties dans trois zones de disponibilité différentes. Les modifications affectant ce fichier de configuration sont annoncées au moins un jour avant leur mise en œuvre. Le composant kubelet dépend du service kube-apiserver ; par conséquent, tout problème lié à ce dernier aura également un impact sur le fonctionnement correct du kubelet.
+
+Les vérifications relatives aux capacités du cluster sont effectuées après chaque déploiement, et les résultats de ces vérifications sont documentés dans la section dédiée aux opérations. Si le cluster étcd devient inopérationnel, la première étape consiste à collecter des données diagnostiques avant d’essayer de le redémarrer. L’équipe chargée de la gestion des mises à jour du système est responsable du composant kubelet et sert de point de contact pour tout problème qui ne peut pas être résolu dans les quatre heures.
+
+Les modifications concernant la limite de l’espace de noms sont annoncées au moins un jour avant leur mise en œuvre via le canal dédié aux opérations. L’équipe responsable du réseau gère le pool de nœuds et sert de point de contact pour tout problème qui ne peut pas être résolu dans les dix minutes. Les demandes qui dépassent la limite de trafic autorisée par le service kube-apiserver reçoivent une réponse HTTP 429 et doivent être réessayées ultérieurement. Les régressions de performances sont détectées en comparant la durée des opérations effectuées par le composant étcd avant et après chaque déploiement.
+
+Si le cluster étcd devient inopérationnel, il est également nécessaire de collecter des données supplémentaires avant de tenter un redémarrage.
+
+**NOTE**  
+Cette procédure a été testée dans l’environnement de pré-production. Les différences par rapport à l’environnement de production se limitent au nombre de copies (replicas) des données gérées.  
+
+**Tableau 2.4 – Principaux paramètres de configuration du pool de nœuds**  
+| Paramètre            | Valeur      | Description                         |
+|------------------|-----------|------------------------------------|
+| `node_pool.batch_size`     | 1000       | Nombre d’enregistrements traités en une seule loterie          |
+| `node_pool.replicas`     | 6         | Nombre de copies du pool de nœuds présentes dans chaque zone d’accessibilité |
+| `node_pool_RETRY_backoff_ms` | 500        | Délai entre deux tentatives de récupération des données   |
+| `node_pool.cache_ttl_seconds` | 300        | Durée pendant laquelle les réponses sont mémorisées en cache local   |
+| `node_pool.log_level`     | `info`      | Niveau de détail des journaux d’activité (utilisé uniquement à des fins de débogage) |
+
+**Procédure : Échellement du kubelet**  
+Toutes les modifications apportées au code du kubelet doivent être examinées par au moins deux membres de l’équipe de développement avant d’être intégrées. Les vérifications de l’état du kubelet doivent réussir trois fois consécutives.  
+
+**Étapes à suivre :**  
+1. Connectez-vous au serveur de contrôle (« bastion host ») à l’aide de votre clé SSH personnelle, puis ouvrez une session dans le cluster de récupération des données.  
+2. Vérifiez qu’aucun nouvel problème n’apparaît dans les journaux d’activité du cluster etcd au cours des trente prochaines minutes.  
+3. Appliquez les modifications via le processus de validation officiel ; ne les appliquez pas manuellement depuis un poste de travail.  
+4. Si une vérification échoue, arrêtez immédiatement le processus et suivez la procédure de réversion décrite dans cette section.  
+5. Exécutez les tests de validation pour les services qui dépendent du kube-apiserver.
+
+6. Comparez le taux de saturation de la CPU des nœuds avec la valeur enregistrée avant le changement.
+7. Mettez à jour le ticket lié au changement avec les résultats de l’opération et fermez-le.
+8. Informez l’équipe réseau que la procédure est terminée.
+
+Les règles suivantes s’appliquent :
+• Vérifiez les notes de version du cluster autoscaler avant chaque mise à niveau.
+• Consultez un collègue de l’équipe SRE avant de procéder à la fusion des données.
+• Documentez chaque action manuelle dans le journal des incidents ou dans le registre des changements.
+• Affichez la durée des modifications apportées par l’outil etcd sur le tableau de bord principal du kube-apiserver.
+
+Un rollback (retour aux versions précédentes) doit être possible à tout moment ; c’est pourquoi chaque modification apportée au fichier de configuration Deployment est versionnée et stockée dans Git. Avant de modifier la configuration des nœuds, les opérateurs doivent s’assurer que l’environnement de test (staging) est en bon état et qu’aucun changement n’est actuellement en cours d’application.
+
+**2.5 Quotas et limites de ressources**  
+Les quotas et limites de ressources sont une source fréquente de questions de la part des équipes d’application. Cette section précise les bonnes pratiques à suivre. L’outil kube-apiserver affiche la durée des modifications apportées par l’outil etcd, qui doit rester inférieure à 200 secondes sous une charge normale. Un inconvénient majeur de l’outil etcd est son incapacité à modifier sa taille en ligne ; il est donc nécessaire de prévoir des périodes de maintenance pour effectuer ces modifications. Si le taux de saturation de la CPU des nœuds dépasse les limites acceptables, cela constitue une alerte critique, car l’absence d’informations pertinentes peut masquer des problèmes réels. Afin de limiter les conséquences d’une mise à jour défectueuse, les modifications sont déployées progressivement.
+
+**Remarque :** Les équipes d’application posent souvent des questions concernant les quotas et limites de ressources ; cette section apporte des informations utiles pour leur aider à gérer ces aspects.
+
+Les tableaux de bord du kubelet affichent le nombre de redémarrages des pods, ainsi que les informations relatives aux déploiements des sept derniers jours. Les demandes qui dépassent la limite de trafic fixée par le cluster etcd reçoivent une réponse HTTP 429 et doivent être réessayées avec un délai d’attente (« backoff »). Le temps d’attente par défaut pour les demandes gérées par l’autocalibrateur du cluster est défini par les quotas alloués aux ressources ; cette valeur peut être modifiée pour chaque service. Il est fortement conseillé de valider la version du logiciel Helm dans l’environnement de pré-production avant de la mettre en production. L’encryptage des données est obligatoire pour tout le trafic entre le kube-apiserver et ses clients. Il est également fortement recommandé de vérifier les quotas alloués aux espaces de noms (namespaces) dans l’environnement de pré-production avant de les appliquer en production. L’autocalibrateur du cluster fonctionne en mode actif-actif, de sorte que la perte d’une seule zone de stockage n’interrompt pas le fonctionnement du service. La configuration du kube-apiserver se compose d’une base commune ainsi que de quelques ajustements spécifiques à chaque environnement. La version 1.13 du kubelet introduit des modifications dans les quotas alloués aux espaces de noms, qui sont décrites dans les notes relatives à la migration. Les tests de charge génèrent un volume de trafic 25 % supérieur au pic observé l’année précédente. Les modifications affectant le système de gestion des interruptions de service (PodDisruptionBudget) sont annoncées via le canal dédié aux opérations.

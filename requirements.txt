@@ -1,0 +1,14 @@
+# Application
+ctranslate2
+sentencepiece
+pymupdf
+python-docx
+onnxruntime
+tokenizers
+numpy
+customtkinter
+tkinterdnd2
+fasttext-wheel
+pillow
+# Construction
+pyinstaller

@@ -1,0 +1,21 @@
+# Environnement et caches
+.venv/
+__pycache__/
+*.pyc
+
+# Modèles (téléchargés / convertis par scripts\setup_models.py)
+models/*
+!models/LICENCES-TIERS.txt
+
+# Artefacts de construction (publiés dans les Releases GitHub)
+build/dist/
+build/work/
+build/*.spec
+installer/Output/
+portable/Output/
+portable/payload.zip
+portable/stub.exe
+
+# Sorties de test
+tests/out*/
+tests/*.png
