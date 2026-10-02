@@ -433,7 +433,7 @@ cd $HOME\SallyTraduction
 $Bureau = [Environment]::GetFolderPath("Desktop")
 
 # 3. Voir les documents présents sur le Bureau
-Get-ChildItem "$Bureau*" -Include *.pdf, *.docx -Name
+Get-ChildItem "$Bureau\*" -Include *.pdf, *.docx -Name
 
 # 4. Traduire VOTRE fichier : remplacez mon_document.pdf par son nom exact (PDF ou .docx)
 powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Fichier "$Bureau\mon_document.pdf" -Sortie "$Bureau\Traductions"
