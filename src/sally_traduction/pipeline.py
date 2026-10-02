@@ -90,6 +90,7 @@ def run(input_path, out_dir, opts: Options, progress=None, log=None, cancel=None
         say("Attention : %d page(s) sans texte (scannées ?) ne seront pas traduites." % doc.scanned_pages)
 
     lid = engines.LangID()
+    say("Détection de langue : %s." % lid.backend)
     direction = opts.direction
     if direction == "auto":
         sample = [s.text for s in segs[:400] if len(s.text.split()) >= 4][:200] or [s.text for s in segs[:50]]

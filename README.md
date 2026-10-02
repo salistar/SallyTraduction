@@ -88,7 +88,7 @@ Les modèles (Opus-MT, M2M-100, MiniLM, fastText) tournent directement dans Pyth
 
 #### C1. Ordinateur **avec** internet, depuis `git clone`
 
-**Prérequis :** Python **3.11** 64 bits installé pour l'utilisateur courant, sans droits administrateur (`winget install Python.Python.3.11 --scope user`, ou l'installateur de python.org avec « Install for me only »).
+**Prérequis :** Python **3.11, 3.12, 3.13 ou 3.14** (64 bits), installé pour l'utilisateur courant, sans droits administrateur : `winget install Python.Python.3.13 --scope user`, ou l'installateur de python.org avec « Install for me only ». Vérifiez la version avec `python --version`.
 
 ```powershell
 # 1. Récupérer le projet
@@ -193,7 +193,7 @@ Exemple complet et commenté : [examples/utiliser_les_modeles.py](examples/utili
 | Outil | Installation pour l'utilisateur courant |
 |---|---|
 | Git | `winget install Git.Git --scope user`, ou [Git portable](https://git-scm.com/download/win) |
-| Python **3.11** 64 bits | `winget install Python.Python.3.11 --scope user`, ou l'installateur de python.org avec « Install for me only » |
+| Python **3.11, 3.12, 3.13 ou 3.14** (64 bits) | `winget install Python.Python.3.13 --scope user`, ou l'installateur de python.org avec « Install for me only » |
 | Inno Setup 6 (installateur seulement) | `winget install JRSoftware.InnoSetup --scope user` |
 | Compilateur C# (version portable) | déjà présent dans Windows (.NET Framework 4.8) |
 
@@ -211,6 +211,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 
 # 5. Installer les dépendances de l'application et de la construction
+#    La dernière ligne doit commencer par « Successfully installed ». Sinon, voir « Dépannage » ci-dessous.
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 
 # 6. Installer les outils de conversion des modèles (≈ 300 Mo, utilisés seulement à l'étape 7)
@@ -219,6 +220,8 @@ python -m venv .venv
 
 # 7. Télécharger et convertir les 5 modèles dans models\ (≈ 3 Go téléchargés la première fois, puis 750 Mo sur disque)
 .\.venv\Scripts\python.exe scripts\setup_models.py
+#    Plus rapide, sans les étapes 6 et 7 : modèles déjà convertis (635 Mo)
+#    .\.venv\Scripts\python.exe scripts\setup_models.py --prebuilt
 
 # 8. Lancer l'application depuis les sources
 $env:PYTHONPATH = "src"
@@ -242,6 +245,19 @@ powershell -ExecutionPolicy Bypass -File build\build.ps1
 # 14. Utiliser votre propre portable avec le script
 powershell -ExecutionPolicy Bypass -File scripts\SallyTraduction.ps1 -Exe portable\Output\SallyTraduction.exe -Fichier tests\Helios_Guide_EN.docx
 ```
+
+### Dépannage
+
+| Symptôme | Cause | Solution |
+|---|---|---|
+| `ModuleNotFoundError: No module named 'ctranslate2'` à l'étape 7 | L'étape 5 a échoué : pip installe tout ou rien, donc un seul paquet en échec bloque toute la liste. Avant la version 1.1.1, `fasttext-wheel` n'avait pas de paquet pour Python 3.13+ | `git pull`, puis relancer l'étape 5 (fastText est désormais facultatif sous Python 3.13+) |
+| `error: Microsoft Visual C++ 14.0 or greater is required` pendant l'étape 5 | Un paquet n'a pas de version précompilée pour votre Python et pip tente de le compiler | `git pull` (dépendances corrigées) ; sinon utilisez Python 3.12 ou 3.13 |
+| `python` ouvre le Microsoft Store ou n'existe pas | Python n'est pas installé ou pas dans le PATH | `winget install Python.Python.3.13 --scope user`, puis fermez et rouvrez PowerShell |
+| `python --version` n'affiche pas la version voulue | Plusieurs Python installés | Remplacez l'étape 3 par `py -3.13 -m venv .venv` (ou `-3.12`, `-3.11`) |
+| Les scripts `.ps1` sont refusés (« l'exécution de scripts est désactivée ») | Stratégie d'exécution | Gardez `powershell -ExecutionPolicy Bypass -File …` comme dans les commandes, ou la forme `& ([scriptblock]::Create((Get-Content … -Raw)))` |
+| Repartir de zéro | Environnement abîmé | Supprimez le dossier `.venv` puis reprenez à l'étape 3 |
+
+Sous Python 3.13 et plus, la détection de langue utilise un **détecteur intégré** anglais / français (aussi fiable que fastText sur le document de test : 100 % en français, 99,6 % en anglais). Sous Python 3.11 et 3.12, fastText est utilisé.
 
 ## ⌨️ Utiliser l'application uniquement avec PowerShell (sans installation, sans droits administrateur)
 

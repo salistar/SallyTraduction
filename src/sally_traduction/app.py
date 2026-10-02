@@ -180,8 +180,11 @@ class App(*Base):
                    ("lid", "fastText LID", "Détection de langue")]
         box = ctk.CTkFrame(sb, fg_color=CARD_ALT, corner_radius=14)
         box.grid(row=3, column=0, sticky="ew", padx=16)
+        from .engines import fasttext_available
+        if not fasttext_available():                     # Python 3.13+ : détecteur intégré
+            engines[-1] = ("lid", "Détecteur intégré", "Langue (anglais / français)")
         for i, (key, name, role) in enumerate(engines):
-            ok = model_available(key)
+            ok = True if key == "lid" else model_available(key)
             row = ctk.CTkFrame(box, fg_color="transparent")
             row.pack(fill="x", padx=14, pady=(12 if i == 0 else 4, 12 if i == len(engines) - 1 else 4))
             ctk.CTkLabel(row, text="●", font=self.f_small, text_color=OK if ok else BAD, width=14).pack(side="left")

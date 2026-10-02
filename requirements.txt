@@ -8,7 +8,8 @@ tokenizers
 numpy
 customtkinter
 tkinterdnd2
-fasttext-wheel
+# fastText (détection de langue) : pas de paquet précompilé pour Python 3.13+, un détecteur intégré prend le relais
+fasttext-wheel; python_version < "3.13"
 pillow
 # Construction
 pyinstaller

@@ -62,6 +62,23 @@ def main():
     M.mkdir(parents=True, exist_ok=True)
     if "--prebuilt" in sys.argv:
         return prebuilt()
+    # La conversion demande des paquets en plus : message clair s'il en manque un
+    missing = []
+    for mod, pkg in (("ctranslate2", "ctranslate2"), ("sentencepiece", "sentencepiece"), ("torch", "torch"),
+                     ("transformers", "transformers"), ("huggingface_hub", "huggingface_hub")):
+        try:
+            __import__(mod)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
+        py = sys.executable
+        sys.exit("Paquets manquants pour convertir les modèles : %s\n"
+                 "Installez-les :\n"
+                 "  \"%s\" -m pip install -r requirements.txt\n"
+                 "  \"%s\" -m pip install torch --index-url https://download.pytorch.org/whl/cpu\n"
+                 "  \"%s\" -m pip install transformers huggingface_hub\n"
+                 "Ou, plus simple, sans conversion : \"%s\" scripts\\setup_models.py --prebuilt"
+                 % (", ".join(missing), py, py, py, py))
     from huggingface_hub import hf_hub_download
     ct2("Helsinki-NLP/opus-mt-en-fr", "opus-mt-en-fr-ct2", ["source.spm", "target.spm"])
     ct2("Helsinki-NLP/opus-mt-fr-en", "opus-mt-fr-en-ct2", ["source.spm", "target.spm"])

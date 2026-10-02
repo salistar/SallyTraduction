@@ -104,15 +104,56 @@ class M2MTranslator(_CT2Base):
 # --------------------------------------------------------------------------
 # Détection de langue (fastText lid.176)
 # --------------------------------------------------------------------------
+_EN_WORDS = set("the of and to in is that for it with as be on are this by from or at an not which can must "
+                "should will was were has have been if when then before after all each any into than only also "
+                "these those their there what your you we they its do does".split())
+_FR_WORDS = set("le la les de des du et est que qui pour dans un une en sur par ne pas au aux avec ce cette ces "
+                "doit sont être peut il elle ils se sa son ses leur leurs mais ou où donc car si lors après avant "
+                "tous toutes chaque plus comme été fait vous nous".split())
+_ACCENTS = re.compile(r"[àâçéèêëîïôùûüœ]")
+_WORD_RX = re.compile(r"[a-zàâäçéèêëîïôöùûüÿœ]+")
+
+
+def simple_detect(text):
+    """Détecteur anglais / français intégré (mots fréquents + accents), utilisé si fastText est indisponible."""
+    low = text.lower()
+    words = _WORD_RX.findall(low)
+    en = sum(w in _EN_WORDS for w in words)
+    fr = sum(w in _FR_WORDS for w in words) + 0.5 * len(_ACCENTS.findall(low))
+    total = en + fr
+    if total < 1:
+        return ("?", 0.0)
+    return ("fr", fr / total) if fr > en else ("en", en / total)
+
+
+def fasttext_available():
+    try:
+        import fasttext  # noqa: F401
+        return (model_path("lid") / "lid.176.ftz").exists()
+    except Exception:
+        return False
+
+
 class LangID:
+    """fastText lid.176 si disponible (Python ≤ 3.12), sinon détecteur anglais / français intégré."""
+
     def __init__(self):
-        import fasttext
-        fasttext.FastText.eprint = lambda *a, **k: None
-        self.m = fasttext.load_model(str(model_path("lid") / "lid.176.ftz"))
+        self.m = None
+        self.backend = "intégré (anglais / français)"
+        if fasttext_available():
+            try:
+                import fasttext
+                fasttext.FastText.eprint = lambda *a, **k: None
+                self.m = fasttext.load_model(str(model_path("lid") / "lid.176.ftz"))
+                self.backend = "fastText lid.176"
+            except Exception:
+                self.m = None
 
     def detect(self, texts):
         if not texts:
             return []
+        if self.m is None:
+            return [simple_detect(t) for t in texts]
         labels, probs = self.m.predict([" ".join(t.split()) for t in texts], k=1)
         return [(l[0].replace("__label__", "") if l else "?", float(p[0]) if len(p) else 0.0)
                 for l, p in zip(labels, probs)]
