@@ -68,7 +68,34 @@ def cli(argv):
     return 1 if errors else 0
 
 
+def texte(argv):
+    """Traduit un texte passé en argument (ou lu sur l'entrée standard avec « - ») et l'affiche."""
+    attach_console()
+    ap = argparse.ArgumentParser(prog="SallyTraduction")
+    ap.add_argument("--texte", required=True)
+    ap.add_argument("--dir", default="auto", choices=["auto", "en-fr", "fr-en"])
+    a = ap.parse_args(argv)
+    src = sys.stdin.read() if a.texte == "-" else a.texte
+    from . import engines, protect
+    direction = a.dir
+    if direction == "auto":
+        lang, _ = engines.LangID().detect([src])[0]
+        direction = "fr-en" if lang == "fr" else "en-fr"
+    glossary = protect.load_glossary(direction)
+    tr = engines.OpusTranslator("opus-%s" % direction)
+    out = []
+    for para in src.splitlines():
+        sents = engines.split_sentences(para)
+        masked = [protect.protect(s, glossary) for s in sents]
+        raw = tr.translate([m for m, _ in masked])
+        out.append(" ".join(protect.restore(t, v, direction[-2:])[0] for t, (_, v) in zip(raw, masked)))
+    print("\n".join(out), flush=True)
+    return 0
+
+
 if __name__ == "__main__":
+    if "--texte" in sys.argv:
+        sys.exit(texte(sys.argv[1:]))
     if "--cli" in sys.argv:
         sys.exit(cli(sys.argv[1:]))
     else:

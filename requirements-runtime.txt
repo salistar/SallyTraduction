@@ -1,0 +1,12 @@
+# Dépendances pour utiliser SallyTraduction directement avec Python (sans PyInstaller ni outils de conversion)
+ctranslate2
+sentencepiece
+pymupdf
+python-docx
+onnxruntime
+tokenizers
+numpy
+customtkinter
+tkinterdnd2
+fasttext-wheel
+pillow

@@ -10,6 +10,7 @@ SallyTraduction traduit vos documents **PDF et Word (.docx)** de l'anglais vers 
 |---|---|---|
 | **Portable** | `SallyTraduction-Portable.exe` (≈ 730 Mo) | Pas de droits administrateur, PC professionnel, clé USB, aucune installation souhaitée |
 | **Installateur** | `SallyTraduction-Setup.exe` (≈ 690 Mo) | PC personnel : raccourcis, menu Démarrer, clic droit « Traduire avec SallyTraduction » |
+| **Python, sans aucun .exe** | `SallyTraduction-Python-Offline.zip` (≈ 740 Mo), ou `git clone` + modèles | Utiliser directement les modèles avec Python et PowerShell (`scripts\Traduire.ps1`), y compris hors ligne : voir le **parcours C** du README |
 
 Les deux se téléchargent dans la page **Releases** du dépôt GitHub. Configuration requise : Windows 10 ou 11 en 64 bits, 8 Go de RAM au minimum (16 Go conseillés), 2 Go d'espace libre et un processeur avec AVX2 (tous les PC depuis 2015 environ).
 

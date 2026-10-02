@@ -4,6 +4,9 @@ import sys
 if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
+    if "--texte" in sys.argv:
+        from sally_traduction.__main__ import texte
+        sys.exit(texte(sys.argv[1:]))
     if "--cli" in sys.argv:
         from sally_traduction.__main__ import cli
         sys.exit(cli(sys.argv[1:]))

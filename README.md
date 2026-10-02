@@ -7,6 +7,8 @@
 | 💼 **Exécutable portable** (sans installation, sans droits administrateur) | **[SallyTraduction-Portable.exe](https://github.com/salistar/SallyTraduction/releases/latest/download/SallyTraduction-Portable.exe)** | **730 Mo** |
 | 🧩 **Installateur Windows** (raccourcis, menu Démarrer, clic droit) | **[SallyTraduction-Setup.exe](https://github.com/salistar/SallyTraduction/releases/latest/download/SallyTraduction-Setup.exe)** | **693 Mo** |
 | ⌨️ **Script PowerShell** (traduire en ligne de commande, sans installation) | **[SallyTraduction.ps1](https://github.com/salistar/SallyTraduction/releases/latest/download/SallyTraduction.ps1)** | 9 Ko |
+| 🐍 **Python hors ligne tout-en-un** : modèles utilisés **directement**, sans aucun `.exe` SallyTraduction, sans installation | **[SallyTraduction-Python-Offline.zip](https://github.com/salistar/SallyTraduction/releases/latest/download/SallyTraduction-Python-Offline.zip)** | **742 Mo** |
+| 🧠 **Modèles seuls**, déjà convertis (pour `git clone` + Python) | **[SallyTraduction-Models.zip](https://github.com/salistar/SallyTraduction/releases/latest/download/SallyTraduction-Models.zip)** | **635 Mo** |
 
 **Exécutable portable :** `https://github.com/salistar/SallyTraduction/releases/latest/download/SallyTraduction-Portable.exe`
 
@@ -18,6 +20,12 @@
 ## 🚀 Tout depuis `git clone`, commande par commande
 
 Toutes les commandes se tapent dans **PowerShell**, ouvert normalement (menu Démarrer → « PowerShell », **sans** « Exécuter en tant qu'administrateur »). Aucune n'exige de droits administrateur.
+
+| Je veux… | Parcours |
+|---|---|
+| Utiliser l'application avec l'exécutable portable | **A** |
+| **Utiliser directement les modèles avec Python, sans aucun `.exe`** (avec ou sans internet) | **C** |
+| Tout reconstruire depuis les sources (exécutable, portable, installateur) | **B** |
 
 ### Parcours A : utiliser l'application (sans rien compiler)
 
@@ -73,6 +81,111 @@ Le premier lancement prépare l'application dans `%LOCALAPPDATA%\SallyTraduction
 ```powershell
 & ([scriptblock]::Create((Get-Content .\scripts\SallyTraduction.ps1 -Raw))) -Fichier "C:\docs\manuel.pdf"
 ```
+
+### Parcours C : utiliser **directement les modèles** avec Python (aucun `.exe` SallyTraduction)
+
+Les modèles (Opus-MT, M2M-100, MiniLM, fastText) tournent directement dans Python : pas d'exécutable SallyTraduction, pas d'Ollama, pas de connexion pendant la traduction, aucun droit administrateur.
+
+#### C1. Ordinateur **avec** internet, depuis `git clone`
+
+**Prérequis :** Python **3.11** 64 bits installé pour l'utilisateur courant, sans droits administrateur (`winget install Python.Python.3.11 --scope user`, ou l'installateur de python.org avec « Install for me only »).
+
+```powershell
+# 1. Récupérer le projet
+git clone https://github.com/salistar/SallyTraduction.git
+
+# 2. Entrer dans le dossier
+cd SallyTraduction
+
+# 3. Créer l'environnement Python du projet
+python -m venv .venv
+
+# 4. Mettre pip à jour
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+
+# 5. Installer uniquement ce qu'il faut pour traduire (ni PyInstaller, ni PyTorch)
+.\.venv\Scripts\python.exe -m pip install -r requirements-runtime.txt
+
+# 6. Télécharger les modèles déjà convertis dans models\ (635 Mo, empreinte SHA-256 vérifiée)
+.\.venv\Scripts\python.exe scripts\setup_models.py --prebuilt
+
+# 7. Traduire une phrase (sens détecté automatiquement)
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Texte "The on-call engineer must approve the change."
+
+# 8. Traduire le document de test, puis vos documents (un fichier, plusieurs, ou un dossier)
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Fichier tests\Helios_Guide_EN.docx
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Fichier "C:\docs\manuel.pdf"
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Fichier "C:\docs\a_traduire" -Sens en-fr -Sortie "C:\docs\traductions" -Rapide
+
+# 9. Ouvrir l'interface graphique (vérification manuelle page / ligne / mot comprise)
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1
+
+# 10. Utiliser les modèles dans vos propres scripts Python (exemple commenté)
+.\.venv\Scripts\python.exe examples\utiliser_les_modeles.py
+```
+
+Même chose sans le script `Traduire.ps1`, en appelant Python directement :
+```powershell
+$env:PYTHONPATH = "src"
+.\.venv\Scripts\python.exe -m sally_traduction --texte "Restart the replicas one at a time." --dir en-fr
+.\.venv\Scripts\python.exe -m sally_traduction --cli "C:\docs\manuel.pdf" "C:\docs\guide.docx" --dir auto --out "C:\docs\traductions"
+.\.venv\Scripts\python.exe -m sally_traduction
+```
+
+#### C2. Ordinateur **sans** internet : zip Python tout-en-un
+
+Le zip contient un Python 3.11 **embarqué**, c'est-à-dire la distribution officielle « embeddable » de python.org, qui ne s'installe pas. Il contient aussi les bibliothèques, l'interface (Tcl/Tk), les 5 modèles, le code source, les scripts et les exemples. Il suffit de le décompresser.
+
+```powershell
+# Sur un PC connecté : télécharger le zip (742 Mo), puis le copier sur une clé USB
+curl.exe -L -o SallyTraduction-Python-Offline.zip https://github.com/salistar/SallyTraduction/releases/latest/download/SallyTraduction-Python-Offline.zip
+```
+```powershell
+# Sur le PC hors ligne :
+# 1. Décompresser dans votre dossier personnel (≈ 1 Go)
+Expand-Archive E:\SallyTraduction-Python-Offline.zip -DestinationPath $HOME\SallyTraduction-Offline
+
+# 2. Entrer dans le dossier
+cd $HOME\SallyTraduction-Offline\SallyTraduction
+
+# 3. Traduire une phrase
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Texte "Always create a snapshot before deleting the volume."
+
+# 4. Traduire des documents
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Fichier tests
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Fichier "C:\docs\manuel.pdf"
+
+# 5. Ouvrir l'interface graphique
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1
+
+# 6. Utiliser les modèles dans vos scripts Python
+.\runtime\python.exe examples\utiliser_les_modeles.py
+```
+Scripts interdits par l'entreprise : `& ([scriptblock]::Create((Get-Content .\scripts\Traduire.ps1 -Raw))) -Fichier "C:\docs\manuel.pdf"`.
+Vérifié : traduction complète avec **0 tentative de connexion réseau**.
+
+Pour **fabriquer ce zip vous-même** à partir du clone (Python 3.11 installé, modèles présents dans `models\`) :
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\make_offline_bundle.ps1
+# résultat : dist-offline\SallyTraduction-Python-Offline.zip
+```
+
+#### C3. Utiliser les modèles dans votre propre code Python
+```python
+import sys; sys.path.insert(0, "src")
+from sally_traduction import engines, protect
+
+glossaire = protect.load_glossary("en-fr")                      # %APPDATA%\SallyTraduction\glossaire.txt
+masque, valeurs = protect.protect("Run kubectl get pods before draining the node pool.", glossaire)
+brut = engines.OpusTranslator("opus-en-fr").translate([masque])[0]
+print(protect.restore(brut, valeurs, "fr")[0])
+# -> Exécutez kubectl get pods avant de vider le pool de nœuds.
+
+from sally_traduction.pipeline import run, Options              # chaîne complète sur un document
+r = run("C:/docs/manuel.pdf", "C:/docs/traductions", Options(direction="auto"))
+print(r.output, r.report, r.review, r.flagged, r.sentences)
+```
+Exemple complet et commenté : [examples/utiliser_les_modeles.py](examples/utiliser_les_modeles.py). Il utilise aussi CTranslate2 seul, la détection de langue et la similarité de sens.
 
 ### Parcours B : reconstruire depuis les sources
 
@@ -190,8 +303,12 @@ Application Windows qui traduit des documents **PDF et Word (.docx)** entre l'an
 | `build/` | Construction de l'exécutable (PyInstaller) et des icônes |
 | `installer/` | Script Inno Setup de l'installateur |
 | `portable/` | Lanceur C# de la version portable en un seul `.exe` |
-| `scripts/SallyTraduction.ps1` | Utilisation en ligne de commande PowerShell, sans installation ni droits administrateur |
-| `scripts/setup_models.py` | Téléchargement et conversion des modèles dans `models/` (`--dest` pour un autre dossier) |
+| `scripts/Traduire.ps1` | **Modèles utilisés directement avec Python** (texte, fichiers, dossiers, interface), sans `.exe` |
+| `scripts/SallyTraduction.ps1` | Même usage via l'exécutable portable, sans installation ni droits administrateur |
+| `scripts/setup_models.py` | Modèles dans `models/` : `--prebuilt` (déjà convertis, 635 Mo) ou conversion soi-même ; `--dest` pour un autre dossier |
+| `scripts/make_offline_bundle.ps1` | Fabrique le zip Python hors ligne tout-en-un |
+| `examples/utiliser_les_modeles.py` | Exemple commenté d'utilisation des modèles dans du code Python |
+| `requirements-runtime.txt` / `requirements.txt` | Dépendances pour traduire / pour construire les exécutables |
 | `benchmark/` | Banc d'essai des 3 modèles et document de test de 500 pages |
 | `tests/` | Petits documents de test et scripts de capture d'interface |
 

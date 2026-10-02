@@ -23,3 +23,6 @@ tests/*.png
 # Exécutable portable téléchargé à côté du script
 scripts/*.exe
 scripts/*.part
+
+# Paquet Python hors ligne (publi� dans les Releases)
+dist-offline/
