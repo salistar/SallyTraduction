@@ -386,3 +386,91 @@ Prérequis : `.venv` (voir les dépendances dans `build\build.ps1`), Inno Setup 
 
 ## Licence
 SallyTraduction est distribué sous licence **GNU AGPL-3.0** (voir [LICENSE](LICENSE)), compatible avec PyMuPDF (AGPL). Les modèles et bibliothèques tiers gardent leurs licences : voir [models/LICENCES-TIERS.txt](models/LICENCES-TIERS.txt).
+
+---
+
+## 🌸 Plan Sally : modèles depuis la Release, fichier à traduire sur le Bureau
+
+Le plus simple pour traduire un document posé sur votre **Bureau**, avec les modèles utilisés **directement par Python**. Aucun `.exe` SallyTraduction, aucun droit administrateur, aucune connexion à huggingface.co : les modèles viennent de la **Release GitHub**.
+
+**Prérequis :** Python 3.11 à 3.14 (64 bits) installé pour l'utilisateur courant (`winget install Python.Python.3.13 --scope user`) et Git (ou le zip du dépôt, voir le parcours A, étape 1 bis).
+
+### Une seule fois : installation
+
+```powershell
+# 1. Se placer dans son dossier personnel
+cd $HOME
+
+# 2. Récupérer le projet
+git clone https://github.com/salistar/SallyTraduction.git
+
+# 3. Entrer dans le dossier
+cd SallyTraduction
+
+# 4. Créer l'environnement Python
+python -m venv .venv
+
+# 5. Mettre pip à jour
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+
+# 6. Installer ce qu'il faut pour traduire (dernière ligne : « Successfully installed … »)
+.\.venv\Scripts\python.exe -m pip install -r requirements-runtime.txt
+
+# 7. Télécharger les modèles depuis la Release GitHub (635 Mo, empreinte SHA-256 vérifiée)
+.\.venv\Scripts\python.exe scripts\setup_models.py --prebuilt
+
+# 8. Vérifier que tout marche avec une phrase
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Texte "The on-call engineer must approve the change."
+```
+
+### À chaque traduction : posez le fichier sur le Bureau, puis
+
+```powershell
+# 1. Aller dans le dossier du projet
+cd $HOME\SallyTraduction
+
+# 2. Repérer le Bureau (fonctionne aussi quand il est redirigé vers OneDrive)
+$Bureau = [Environment]::GetFolderPath("Desktop")
+
+# 3. Voir les documents présents sur le Bureau
+Get-ChildItem $Bureau -File -Include *.pdf, *.docx -Name
+
+# 4. Traduire VOTRE fichier : remplacez mon_document.pdf par son nom exact (PDF ou .docx)
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Fichier "$Bureau\mon_document.pdf" -Sortie "$Bureau\Traductions"
+
+# 5. Ouvrir le dossier des résultats sur le Bureau
+explorer "$Bureau\Traductions"
+```
+
+Dans `Bureau\Traductions`, vous trouvez pour chaque document :
+
+| Fichier | Contenu |
+|---|---|
+| `mon_document_FR.pdf` (ou `_EN`, ou `.docx`) | Le document traduit, au même format |
+| `mon_document_FR_rapport.html` | Le rapport de contrôle qualité (double-clic pour l'ouvrir) |
+| `mon_document_FR_verification.json` | Les phrases à relire, avec **page, ligne et mot** |
+
+### Variantes utiles
+
+```powershell
+# Traduire TOUS les PDF et Word posés sur le Bureau, en une fois
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Fichier $Bureau -Sortie "$Bureau\Traductions"
+
+# Forcer le sens : français vers anglais
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Fichier "$Bureau\mon_document.pdf" -Sens fr-en -Sortie "$Bureau\Traductions"
+
+# Deux fois plus rapide (sans le deuxième avis M2M-100), pour un premier jet
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1 -Fichier "$Bureau\mon_document.pdf" -Rapide -Sortie "$Bureau\Traductions"
+
+# Relire les phrases signalées page / ligne / mot dans l'interface :
+# « Reprendre une vérification… » puis choisir Bureau\Traductions\mon_document_FR_verification.json
+powershell -ExecutionPolicy Bypass -File scripts\Traduire.ps1
+
+# Mettre à jour le projet plus tard (les modèles déjà téléchargés sont conservés)
+cd $HOME\SallyTraduction
+git pull
+.\.venv\Scripts\python.exe -m pip install -r requirements-runtime.txt
+```
+
+> **Astuce :** le nom du fichier contient des espaces ou des accents ? Gardez les guillemets : `-Fichier "$Bureau\Rapport annuel 2026.pdf"`.
+> **Pas d'internet sur ce PC ?** Remplacez l'étape 7 de l'installation par `.\.venv\Scripts\python.exe scripts\setup_models.py --zip "E:\SallyTraduction-Models.zip"`, après avoir copié le zip des modèles sur une clé USB.
