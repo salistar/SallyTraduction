@@ -12,7 +12,6 @@
 **Installateur :** `https://github.com/salistar/SallyTraduction/releases/download/v1.1.0/SallyTraduction-Setup-1.1.0.exe`
 
 > **Fonctionne sans internet et sans Ollama** : téléchargez le fichier une fois, puis copiez-le (clé USB) sur l'ordinateur hors ligne. Tous les modèles sont inclus.
-> Dépôt privé : les liens demandent d'être connecté à GitHub avec un compte qui a accès au dépôt.
 
 Application Windows qui traduit des documents **PDF et Word (.docx)** entre l'anglais et le français, **100 % hors ligne**. Le fichier produit garde le même format et la même mise en page, et un rapport de contrôle qualité l'accompagne. Un écran de **vérification manuelle** donne pour chaque phrase douteuse sa **page, sa ligne et la position du mot**.
 
