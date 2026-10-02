@@ -218,10 +218,14 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 .\.venv\Scripts\python.exe -m pip install transformers huggingface_hub
 
-# 7. Télécharger et convertir les 5 modèles dans models\ (≈ 3 Go téléchargés la première fois, puis 750 Mo sur disque)
+# 7. Préparer les 5 modèles dans models\
+#    Convertit les originaux depuis huggingface.co (≈ 3 Go la première fois). Si huggingface.co est bloqué
+#    (réseau d'entreprise), le script bascule seul sur les modèles déjà convertis publiés sur GitHub (635 Mo).
 .\.venv\Scripts\python.exe scripts\setup_models.py
-#    Plus rapide, sans les étapes 6 et 7 : modèles déjà convertis (635 Mo)
+#    Directement depuis GitHub, sans les étapes 6 et 7 :
 #    .\.venv\Scripts\python.exe scripts\setup_models.py --prebuilt
+#    Sans aucune connexion, avec un SallyTraduction-Models.zip téléchargé au navigateur ou copié par clé USB :
+#    .\.venv\Scripts\python.exe scripts\setup_models.py --zip "C:\Users\moi\Downloads\SallyTraduction-Models.zip"
 
 # 8. Lancer l'application depuis les sources
 $env:PYTHONPATH = "src"
@@ -251,6 +255,8 @@ powershell -ExecutionPolicy Bypass -File scripts\SallyTraduction.ps1 -Exe portab
 | Symptôme | Cause | Solution |
 |---|---|---|
 | `ModuleNotFoundError: No module named 'ctranslate2'` à l'étape 7 | L'étape 5 a échoué : pip installe tout ou rien, donc un seul paquet en échec bloque toute la liste. Avant la version 1.1.1, `fasttext-wheel` n'avait pas de paquet pour Python 3.13+ | `git pull`, puis relancer l'étape 5 (fastText est désormais facultatif sous Python 3.13+) |
+| `OSError: We couldn't connect to 'https://huggingface.co'` ou `LocalEntryNotFoundError` à l'étape 7 | huggingface.co est bloqué par le pare-feu ou le proxy de l'entreprise (GitHub, lui, passe) | `git pull` puis relancer l'étape 7 : le script bascule seul sur les modèles convertis de GitHub. Ou directement `setup_models.py --prebuilt` |
+| Même GitHub est bloqué pour Python à l'étape 7 | Proxy ou inspection SSL de l'entreprise | Le script réessaie avec `curl.exe`. Sinon, téléchargez **[SallyTraduction-Models.zip](https://github.com/salistar/SallyTraduction/releases/latest/download/SallyTraduction-Models.zip)** avec le navigateur, puis `setup_models.py --zip "<chemin du zip>"` |
 | `error: Microsoft Visual C++ 14.0 or greater is required` pendant l'étape 5 | Un paquet n'a pas de version précompilée pour votre Python et pip tente de le compiler | `git pull` (dépendances corrigées) ; sinon utilisez Python 3.12 ou 3.13 |
 | `python` ouvre le Microsoft Store ou n'existe pas | Python n'est pas installé ou pas dans le PATH | `winget install Python.Python.3.13 --scope user`, puis fermez et rouvrez PowerShell |
 | `python --version` n'affiche pas la version voulue | Plusieurs Python installés | Remplacez l'étape 3 par `py -3.13 -m venv .venv` (ou `-3.12`, `-3.11`) |
