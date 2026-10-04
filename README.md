@@ -511,7 +511,7 @@ git pull
 powershell -ExecutionPolicy Bypass -File llm\Relire.ps1 -Fichier tests\Helios_Guide_EN.docx -Limite 5
 ```
 
-**Sans internet sur le PC :** téléchargez sur un PC connecté tous les fichiers (35) de la Release [llm-v1.0](https://github.com/salistar/SallyTraduction/releases/tag/llm-v1.0) dans un même dossier (par exemple `E:\llm`), puis sur le PC hors ligne :
+**Sans internet sur le PC :** téléchargez sur un PC connecté tous les fichiers de la Release [llm-v1.0](https://github.com/salistar/SallyTraduction/releases/tag/llm-v1.0) dans un même dossier (par exemple `E:\llm`), puis sur le PC hors ligne :
 ```powershell
 .\.venv\Scripts\python.exe llm\setup_llm.py --dossier E:\llm
 ```
