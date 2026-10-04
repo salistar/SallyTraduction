@@ -19,6 +19,7 @@ from setup_models import download, sha256   # noqa: E402  (proxy et certificats 
 TAG = "llm-v1.0"
 RELEASE = "https://github.com/salistar/SallyTraduction/releases/download/%s/" % TAG
 SUMS = "SHA256SUMS-LLM.txt"
+PARTS = "PARTS-LLM.txt"
 LLAMA_ZIP = "llama.cpp-b11384-win-cpu-x64.zip"
 
 
@@ -50,6 +51,35 @@ def main():
         parts = line.split()
         if len(parts) == 2:
             sums[parts[1]] = parts[0].lower()
+    # Certains morceaux sont publiés en tranches de 256 Mo (PARTS-LLM.txt : morceau  tranche  sha256)
+    pieces = {}
+    try:
+        for line in fetch(PARTS, "liste des tranches").read_text(encoding="utf-8").splitlines():
+            p = line.split()
+            if len(p) == 3 and not line.startswith("#"):
+                pieces.setdefault(p[0], []).append((p[1], p[2].lower()))
+    except SystemExit:
+        pass
+
+    def get_shard(name, label):
+        """Renvoie le fichier du morceau, téléchargé d'un bloc ou recollé à partir de ses tranches."""
+        if local and (local / name).exists() or name not in pieces:
+            return fetch(name, label)
+        out = cache / name
+        with open(out, "wb") as dst:
+            for j, (piece, digest) in enumerate(pieces[name], 1):
+                for essai in range(1, 4):
+                    f = fetch(piece, "%s, tranche %d/%d" % (label, j, len(pieces[name])))
+                    if sha256(f) == digest:
+                        break
+                    f.unlink()
+                else:
+                    raise SystemExit("tranche corrompue : %s" % piece)
+                with open(f, "rb") as src:
+                    shutil.copyfileobj(src, dst, 1 << 20)
+                f.unlink()
+        return out
+
     shards = sorted(n for n in sums if n.endswith(".gguf"))
     total = len(shards)
     for k, name in enumerate(shards, 1):
@@ -58,7 +88,7 @@ def main():
             print("[%d/%d] déjà installé : %s" % (k, total, name), flush=True)
             continue
         for essai in range(1, 4):
-            f = fetch(name, "[%d/%d] %s" % (k, total, name))
+            f = get_shard(name, "[%d/%d] %s" % (k, total, name))
             if sha256(f) == sums[name]:
                 f.replace(final)
                 print("        empreinte vérifiée", flush=True)

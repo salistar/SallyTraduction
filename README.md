@@ -483,7 +483,7 @@ git pull
 SallyTraduction traduit vite avec Opus-MT et **signale** les phrases douteuses (environ 3 à 6 %). **SallyTraduction-LLM** fait **retraduire uniquement ces phrases** par **Qwen3-30B-A3B-Instruct**, le modèle le plus fidèle de notre banc d'essai, puis régénère le document. On obtient la vitesse d'Opus-MT, avec la qualité d'un grand modèle là où c'est nécessaire.
 
 - **100 % local** : moteur llama.cpp portable, sans Ollama, sans connexion, sans droits administrateur.
-- **Modèle publié sur GitHub** (Release **[llm-v1.0](https://github.com/salistar/SallyTraduction/releases/tag/llm-v1.0)**), donc téléchargeable même quand huggingface.co est bloqué. Il est découpé en 8 parties de moins de 2 Go (13 Go au total), empreintes SHA-256 vérifiées.
+- **Modèle publié sur GitHub** (Release **[llm-v1.0](https://github.com/salistar/SallyTraduction/releases/tag/llm-v1.0)**), donc téléchargeable même quand huggingface.co est bloqué. Il est découpé en 8 parties (13 Go au total) ; les parties 5 à 8 sont publiées en tranches de 256 Mo, plus faciles à transférer sur une connexion instable. `setup_llm.py` télécharge, recolle et vérifie tout (empreintes SHA-256).
 - **Garde-fous** : le LLM reçoit la phrase d'origine, la traduction à corriger, le glossaire et les éléments techniques à ne pas toucher. Si sa réponse modifie un nombre ou une commande, ou a une longueur anormale, elle est **rejetée** et la traduction d'Opus-MT est conservée.
 
 | Exemple (banc d'essai) | Opus-MT | Après relecture par Qwen3 |
@@ -511,7 +511,7 @@ git pull
 powershell -ExecutionPolicy Bypass -File llm\Relire.ps1 -Fichier tests\Helios_Guide_EN.docx -Limite 5
 ```
 
-**Sans internet sur le PC :** téléchargez sur un PC connecté les 12 fichiers de la Release [llm-v1.0](https://github.com/salistar/SallyTraduction/releases/tag/llm-v1.0) dans un même dossier (par exemple `E:\llm`), puis sur le PC hors ligne :
+**Sans internet sur le PC :** téléchargez sur un PC connecté tous les fichiers (35) de la Release [llm-v1.0](https://github.com/salistar/SallyTraduction/releases/tag/llm-v1.0) dans un même dossier (par exemple `E:\llm`), puis sur le PC hors ligne :
 ```powershell
 .\.venv\Scripts\python.exe llm\setup_llm.py --dossier E:\llm
 ```
