@@ -26,3 +26,10 @@ scripts/*.part
 
 # Paquet Python hors ligne (publié dans les Releases)
 dist-offline/
+
+# SallyTraduction-LLM : modèle, moteur et fichiers de construction (publiés dans la Release llm-v1.0)
+llm/bin/
+llm/models/
+llm/build/
+llm/telechargements/
+llm/*.log

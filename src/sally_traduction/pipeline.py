@@ -33,6 +33,8 @@ class Options:
     backtranslation: bool = True
     semantic: bool = True
     second_opinion: bool = True
+    overrides: dict = None           # {phrase source: traduction imposée} (relecture par LLM)
+    out_suffix: str = ""             # ajouté au nom du fichier produit (ex. « _LLM »)
 
 
 @dataclass
@@ -64,7 +66,7 @@ def _tokens(s):
 def run(input_path, out_dir, opts: Options, progress=None, log=None, cancel=None):
     """progress(stage_key, fraction, message) ; log(message)."""
     t_start = time.time()
-    input_path, out_dir = Path(input_path), Path(out_dir)
+    input_path, out_dir = Path(input_path).resolve(), Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     say = log or (lambda m: None)
     prog = progress or (lambda *a: None)
@@ -131,6 +133,14 @@ def run(input_path, out_dir, opts: Options, progress=None, log=None, cancel=None
         txt, miss = protect.restore(t, vals, tgt_lang)
         tgt.append(txt)
         lost.append(miss)
+    if opts.overrides:                       # traductions corrigées (relecture par LLM)
+        n_over = 0
+        for i, s in enumerate(uniq):
+            if s in opts.overrides and opts.overrides[s].strip():
+                tgt[i] = opts.overrides[s].strip()
+                lost[i] = 0
+                n_over += 1
+        say("%d phrase(s) remplacée(s) par la relecture du LLM." % n_over)
     done("traduction")
     say("Traduction terminée en %.0f s." % timings["traduction"])
 
@@ -255,7 +265,7 @@ def run(input_path, out_dir, opts: Options, progress=None, log=None, cancel=None
     for seg, sents in zip(segs, seg_sents):
         translations[seg.id] = " ".join(tgt[index[s]] for s in sents)
     doc.apply(translations, lambda x: prog("reconstruction", 0.95 * x, "Écriture du document traduit"), cancel)
-    suffix = "_" + tgt_lang.upper()
+    suffix = "_" + tgt_lang.upper() + (opts.out_suffix or "")
     out = out_dir / (input_path.stem + suffix + input_path.suffix.lower())
     k = 2
     while out.exists():

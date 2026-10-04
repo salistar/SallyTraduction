@@ -43,7 +43,7 @@ def _windows_ssl_context():
     return ctx
 
 
-def download(url, dest, label):
+def download(url, dest, label, hint=None):
     print("téléchargement :", label, flush=True)
     try:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler(),   # proxy Windows / variables HTTPS_PROXY
@@ -66,10 +66,9 @@ def download(url, dest, label):
     curl = shutil.which("curl.exe") or shutil.which("curl")
     if curl and subprocess.call([curl, "-L", "--fail", "--ssl-no-revoke", "--progress-bar", "-o", str(dest), url]) == 0:
         return
-    raise SystemExit(
-        "Téléchargement impossible : %s\n"
-        "Téléchargez le fichier avec votre navigateur, puis :\n"
-        "  \"%s\" scripts\\setup_models.py --zip \"C:\\chemin\\vers\\%s\"" % (url, sys.executable, MODELS_ZIP))
+    raise SystemExit("Téléchargement impossible : %s\nTéléchargez le fichier avec votre navigateur, puis :\n  %s"
+                     % (url, hint or "\"%s\" scripts\\setup_models.py --zip \"C:\\chemin\\vers\\%s\""
+                        % (sys.executable, MODELS_ZIP)))
 
 
 def sha256(path):

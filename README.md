@@ -9,6 +9,7 @@
 | ⌨️ **Script PowerShell** (traduire en ligne de commande, sans installation) | **[SallyTraduction.ps1](https://github.com/salistar/SallyTraduction/releases/latest/download/SallyTraduction.ps1)** | 9 Ko |
 | 🐍 **Python hors ligne tout-en-un** : modèles utilisés **directement**, sans aucun `.exe` SallyTraduction, sans installation | **[SallyTraduction-Python-Offline.zip](https://github.com/salistar/SallyTraduction/releases/latest/download/SallyTraduction-Python-Offline.zip)** | **742 Mo** |
 | 🧠 **Modèles seuls**, déjà convertis (pour `git clone` + Python) | **[SallyTraduction-Models.zip](https://github.com/salistar/SallyTraduction/releases/latest/download/SallyTraduction-Models.zip)** | **635 Mo** |
+| 🤖 **SallyTraduction-LLM** : Qwen3-30B-A3B (8 parties) + llama.cpp portable, pour relire les phrases signalées | **[Release llm-v1.0](https://github.com/salistar/SallyTraduction/releases/tag/llm-v1.0)** (voir le Projet 2 en fin de page) | **13 Go** |
 
 **Exécutable portable :** `https://github.com/salistar/SallyTraduction/releases/latest/download/SallyTraduction-Portable.exe`
 
@@ -474,3 +475,89 @@ git pull
 
 > **Astuce :** le nom du fichier contient des espaces ou des accents ? Gardez les guillemets : `-Fichier "$Bureau\Rapport annuel 2026.pdf"`.
 > **Pas d'internet sur ce PC ?** Remplacez l'étape 7 de l'installation par `.\.venv\Scripts\python.exe scripts\setup_models.py --zip "E:\SallyTraduction-Models.zip"`, après avoir copié le zip des modèles sur une clé USB.
+
+---
+
+## 🧠 Projet 2 : SallyTraduction-LLM, relecture par un grand modèle local (Qwen3-30B-A3B)
+
+SallyTraduction traduit vite avec Opus-MT et **signale** les phrases douteuses (environ 3 à 6 %). **SallyTraduction-LLM** fait **retraduire uniquement ces phrases** par **Qwen3-30B-A3B-Instruct**, le modèle le plus fidèle de notre banc d'essai, puis régénère le document. On obtient la vitesse d'Opus-MT, avec la qualité d'un grand modèle là où c'est nécessaire.
+
+- **100 % local** : moteur llama.cpp portable, sans Ollama, sans connexion, sans droits administrateur.
+- **Modèle publié sur GitHub** (Release **[llm-v1.0](https://github.com/salistar/SallyTraduction/releases/tag/llm-v1.0)**), donc téléchargeable même quand huggingface.co est bloqué. Il est découpé en 8 parties de moins de 2 Go (13 Go au total), empreintes SHA-256 vérifiées.
+- **Garde-fous** : le LLM reçoit la phrase d'origine, la traduction à corriger, le glossaire et les éléments techniques à ne pas toucher. Si sa réponse modifie un nombre ou une commande, ou a une longueur anormale, elle est **rejetée** et la traduction d'Opus-MT est conservée.
+
+| Exemple (banc d'essai) | Opus-MT | Après relecture par Qwen3 |
+|---|---|---|
+| *the local cache.* | la cache locale. | **le cache local** |
+| *roll back if the trend is confirmed.* | recule si la tendance est confirmée. | **annuler si la tendance est confirmée.** |
+| *Always create a snapshot first and confirm* | Toujours créer un instantané et confirmer | **Créez toujours un instantané en premier et confirmez-le** |
+
+**Configuration :** 16 Go de RAM au minimum (32 Go conseillés), 14 Go d'espace disque. Fermez les applications lourdes pendant la relecture : avec 16 Go, Windows lit une partie du modèle sur le disque, ce qui ralentit la génération.
+
+### Installation : à la suite du Plan Sally (ou des parcours C1 / B)
+
+```powershell
+# 1. Aller dans le dossier du projet
+cd $HOME\SallyTraduction
+
+# 2. Mettre le projet à jour
+git pull
+
+# 3. Installer le modèle et le moteur depuis la Release llm-v1.0 (13 Go ; relancez la commande en cas de coupure,
+#    les parties déjà vérifiées ne sont pas retéléchargées)
+.\.venv\Scripts\python.exe llm\setup_llm.py
+
+# 4. Essai rapide : traduire puis relire au plus 5 phrases du document de test
+powershell -ExecutionPolicy Bypass -File llm\Relire.ps1 -Fichier tests\Helios_Guide_EN.docx -Limite 5
+```
+
+**Sans internet sur le PC :** téléchargez sur un PC connecté les 12 fichiers de la Release [llm-v1.0](https://github.com/salistar/SallyTraduction/releases/tag/llm-v1.0) dans un même dossier (par exemple `E:\llm`), puis sur le PC hors ligne :
+```powershell
+.\.venv\Scripts\python.exe llm\setup_llm.py --dossier E:\llm
+```
+
+### Traduire et relire un fichier posé sur le Bureau
+
+```powershell
+# 1. Aller dans le dossier du projet
+cd $HOME\SallyTraduction
+
+# 2. Repérer le Bureau
+$Bureau = [Environment]::GetFolderPath("Desktop")
+
+# 3. Traduire (Opus-MT) puis faire relire les phrases signalées (Qwen3), résultats dans Bureau\Traductions
+powershell -ExecutionPolicy Bypass -File llm\Relire.ps1 -Fichier "$Bureau\mon_document.pdf" -Sortie "$Bureau\Traductions"
+
+# 4. Ouvrir les résultats
+explorer "$Bureau\Traductions"
+```
+
+Résultats dans `Bureau\Traductions` :
+
+| Fichier | Contenu |
+|---|---|
+| `mon_document_FR.pdf` | Traduction Opus-MT (avant relecture) |
+| **`mon_document_FR_LLM.pdf`** | **Document final, relu par Qwen3** |
+| `mon_document_FR_LLM_rapport.html` | Rapport de contrôle après relecture |
+| `mon_document_FR_LLM_verification.json` | Phrases encore à vérifier (page / ligne / mot), à ouvrir dans l'interface |
+| `mon_document_FR_LLM_corrections.csv` | Journal : original, traduction Opus-MT, traduction Qwen3, statut (retenue ou rejetée) |
+
+### Variantes
+
+```powershell
+# Relire un document déjà traduit par SallyTraduction (sans le retraduire)
+powershell -ExecutionPolicy Bypass -File llm\Relire.ps1 -Verification "$Bureau\Traductions\mon_document_FR_verification.json" -Sortie "$Bureau\Traductions"
+
+# Plus rapide : contrôles finaux sans le deuxième avis M2M-100
+powershell -ExecutionPolicy Bypass -File llm\Relire.ps1 -Fichier "$Bureau\mon_document.pdf" -Sortie "$Bureau\Traductions" -Rapide
+
+# Choisir le nombre de cœurs utilisés par le modèle
+powershell -ExecutionPolicy Bypass -File llm\Relire.ps1 -Fichier "$Bureau\mon_document.pdf" -Threads 8
+
+# Directement en Python (sans le script PowerShell)
+.\.venv\Scripts\python.exe llm\relire.py --verification "$Bureau\Traductions\mon_document_FR_verification.json" --rapide
+```
+
+**Durée mesurée** (Core Ultra 7 255H, 31 Go de RAM) : 20 pages traduites puis relues en **1 min 36 s**, dont 19 phrases relues par Qwen3 en 48 s (≈ 2,5 s par phrase, modèle déjà en mémoire). Le tout premier lancement est plus lent, le temps de charger les 13 Go depuis le disque. **Avec 16 Go de RAM, comptez nettement plus**, car une partie du modèle est relue sur le disque. Un document de 500 pages compte en général de 300 à 1 000 phrases signalées, soit de 15 min à quelques heures selon la machine.
+
+**Licences :** Qwen3-30B-A3B-Instruct-2507, Apache 2.0 (Alibaba Cloud, équipe Qwen) ; quantification GGUF par Unsloth ; llama.cpp, MIT. Détails dans `NOTICE-LLM.txt` de la Release.
